@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Complete + Fixed)
+name: Build Modernize Browser (Requires Your legacy-transpiler.js)
 
 on:
   workflow_dispatch:
@@ -8,19 +8,36 @@ jobs:
     runs-on: macos-latest
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify legacy-transpiler.js exists
+        run: |
+          if [ ! -f patches/legacy-transpiler.js ]; then
+            echo "ERROR: patches/legacy-transpiler.js not found!"
+            echo ""
+            echo "You MUST upload your 274KB legacy-transpiler.js file to the patches/ folder"
+            echo "in your repository before running this workflow."
+            echo ""
+            echo "This file handles ES2020-2025 SYNTAX transformation (optional chaining,"
+            echo "nullish coalescing, private fields, logical assignment operators, etc.)"
+            echo "without it, modern websites like z.ai will fail to load."
+            echo ""
+            echo "Please upload the file and re-run the workflow."
+            exit 1
+          fi
+          echo "legacy-transpiler.js found. Size: $(wc -c < patches/legacy-transpiler.js) bytes"
+
       - name: Create directory structure
         run: |
-          mkdir -p patches
           mkdir -p Payload/Modernize.app
 
-      - name: Download all possible polyfills
+      - name: Download all runtime polyfills (core-js, fetch, streams, etc.)
         run: |
-          # Core JS
+          # Runtime polyfills (APIs, not syntax)
           curl -L -o patches/1-core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
           curl -L -o patches/2-regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
           curl -L -o patches/3-promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
-          
-          # Web APIs
           curl -L -o patches/4-fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
           curl -L -o patches/5-abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
           curl -L -o patches/6-urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
@@ -29,13 +46,10 @@ jobs:
           curl -L -o patches/9-streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
           curl -L -o patches/10-structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
           curl -L -o patches/11-web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
-          
-          # Additional polyfills
           curl -L -o patches/12-blob.js https://cdn.jsdelivr.net/npm/blob-polyfill@1.0.20221007/index.js
           curl -L -o patches/13-encoding.js https://cdn.jsdelivr.net/npm/text-encoding@0.7.0/lib/encoding.min.js
-          curl -L -o patches/14-crypto.js https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.js
           
-          echo "All polyfills downloaded"
+          echo "All runtime polyfills downloaded"
 
       - name: Create basic polyfills file
         run: |
@@ -121,7 +135,7 @@ jobs:
 
       - name: Create iOS 15 fallbacks
         run: |
-          cat > patches/15-ios15-fallbacks.js << 'FALLBACKS_EOF'
+          cat > patches/14-ios15-fallbacks.js << 'FALLBACKS_EOF'
           (function(global) {
               if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
                   var proto = global.MediaQueryList.prototype;
@@ -211,7 +225,7 @@ jobs:
 
       - name: Create loader.js
         run: |
-          cat > patches/16-loader.js << 'LOADER_EOF'
+          cat > patches/15-loader.js << 'LOADER_EOF'
           (function(){
             var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
             var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
@@ -230,6 +244,8 @@ jobs:
                 target: { platform: "iOS", version: iosVersion },
                 minify: true
               });
+            } else {
+              console.warn("LegacyTranspiler not found – syntax transformation disabled");
             }
             var observer = new MutationObserver(function(mutations) {
               for (var i = 0; i < mutations.length; i++) {
@@ -247,10 +263,6 @@ jobs:
             observer.observe(document.documentElement, { childList: true, subtree: true });
           })();
           LOADER_EOF
-
-      - name: Create dummy legacy-transpiler.js
-        run: |
-          echo "// LegacyTranspiler placeholder - actual transpilation handled by core-js" > patches/17-legacy-transpiler.js
 
       - name: Copy all JS files to app bundle
         run: |
@@ -384,14 +396,14 @@ jobs:
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
                   let bundle = Bundle.main
-                  let jsFiles = (0...17).map { "\($0)" }.flatMap { 
-                      let names = ["0-polyfills", "1-core-js", "2-regenerator", "3-promise", "4-fetch", "5-abortcontroller", "6-urlpattern", "7-intersection-observer", "8-resize-observer", "9-streams", "10-structured-clone", "11-web-animations", "12-blob", "13-encoding", "14-crypto", "15-ios15-fallbacks", "16-loader", "17-legacy-transpiler"]
-                      return names
-                  }
+                  // Load all JS files in order: polyfills -> core-js -> runtime polyfills -> fallbacks -> loader -> legacy-transpiler
+                  let jsFiles = ["0-polyfills", "1-core-js", "2-regenerator", "3-promise", "4-fetch", "5-abortcontroller", "6-urlpattern", "7-intersection-observer", "8-resize-observer", "9-streams", "10-structured-clone", "11-web-animations", "12-blob", "13-encoding", "14-ios15-fallbacks", "15-loader", "legacy-transpiler"]
                   for fileName in jsFiles {
                       if let path = bundle.path(forResource: fileName, ofType: "js"), let js = try? String(contentsOfFile: path) {
                           config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
                           print("Loaded: \(fileName).js")
+                      } else {
+                          print("Warning: \(fileName).js not found")
                       }
                   }
                   webView = WKWebView(frame: .zero, configuration: config)
@@ -770,5 +782,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-Complete-Fixed
+          name: Modernize-Final
           path: Modernize.ipa

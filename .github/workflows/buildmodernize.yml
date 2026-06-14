@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Self-Contained)
+name: Build Modernize Browser (Complete + Fixed)
 
 on:
   workflow_dispatch:
@@ -13,64 +13,33 @@ jobs:
           mkdir -p patches
           mkdir -p Payload/Modernize.app
 
-      - name: Download core-js (ES2020-2025 polyfill - ~600KB)
+      - name: Download all possible polyfills
         run: |
-          curl -L -o patches/core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
-          echo "Downloaded core-js: $(wc -c < patches/core-js.js) bytes"
+          # Core JS
+          curl -L -o patches/1-core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
+          curl -L -o patches/2-regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
+          curl -L -o patches/3-promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
+          
+          # Web APIs
+          curl -L -o patches/4-fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
+          curl -L -o patches/5-abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
+          curl -L -o patches/6-urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
+          curl -L -o patches/7-intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
+          curl -L -o patches/8-resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
+          curl -L -o patches/9-streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
+          curl -L -o patches/10-structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
+          curl -L -o patches/11-web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
+          
+          # Additional polyfills
+          curl -L -o patches/12-blob.js https://cdn.jsdelivr.net/npm/blob-polyfill@1.0.20221007/index.js
+          curl -L -o patches/13-encoding.js https://cdn.jsdelivr.net/npm/text-encoding@0.7.0/lib/encoding.min.js
+          curl -L -o patches/14-crypto.js https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.js
+          
+          echo "All polyfills downloaded"
 
-      - name: Download web-animations-js (Web Animations API - ~420KB)
+      - name: Create basic polyfills file
         run: |
-          curl -L -o patches/web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
-          echo "Downloaded web-animations: $(wc -c < patches/web-animations.js) bytes"
-
-      - name: Download whatwg-fetch (full fetch API)
-        run: |
-          curl -L -o patches/fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
-          echo "Downloaded fetch: $(wc -c < patches/fetch.js) bytes"
-
-      - name: Download abortcontroller-polyfill
-        run: |
-          curl -L -o patches/abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
-          echo "Downloaded abortcontroller: $(wc -c < patches/abortcontroller.js) bytes"
-
-      - name: Download urlpattern-polyfill
-        run: |
-          curl -L -o patches/urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
-          echo "Downloaded urlpattern: $(wc -c < patches/urlpattern.js) bytes"
-
-      - name: Download intersection-observer
-        run: |
-          curl -L -o patches/intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
-          echo "Downloaded intersection-observer: $(wc -c < patches/intersection-observer.js) bytes"
-
-      - name: Download resize-observer-polyfill
-        run: |
-          curl -L -o patches/resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
-          echo "Downloaded resize-observer: $(wc -c < patches/resize-observer.js) bytes"
-
-      - name: Download web-streams-polyfill
-        run: |
-          curl -L -o patches/streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
-          echo "Downloaded streams: $(wc -c < patches/streams.js) bytes"
-
-      - name: Download structured-clone-polyfill
-        run: |
-          curl -L -o patches/structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
-          echo "Downloaded structured-clone: $(wc -c < patches/structured-clone.js) bytes"
-
-      - name: Download promise-polyfill
-        run: |
-          curl -L -o patches/promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
-          echo "Downloaded promise: $(wc -c < patches/promise.js) bytes"
-
-      - name: Download regenerator-runtime (async/await)
-        run: |
-          curl -L -o patches/regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
-          echo "Downloaded regenerator: $(wc -c < patches/regenerator.js) bytes"
-
-      - name: Create polyfills.js (basic)
-        run: |
-          cat > patches/polyfills.js << 'POLYFILLS_EOF'
+          cat > patches/0-polyfills.js << 'POLYFILLS_EOF'
           (function(global){
             if (!global.queueMicrotask) global.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
             if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
@@ -78,7 +47,7 @@ jobs:
             if (!Object.hasOwn) Object.hasOwn = function(obj,prop){ return Object.prototype.hasOwnProperty.call(obj,prop); };
             if (!String.prototype.replaceAll) String.prototype.replaceAll = function(s,r){ if(typeof s==="string")return this.split(s).join(r); if(s instanceof RegExp){if(!s.global)throw new TypeError("Global RegExp required"); return this.replace(s,r);} return this.replace(s,r); };
             if (typeof global.globalThis === 'undefined') global.globalThis = global;
-            if (typeof Promise.allSettled !== 'function') {
+            if (!Promise.allSettled) {
               Promise.allSettled = function(promises) {
                 return Promise.all(promises.map(function(p) {
                   return Promise.resolve(p).then(
@@ -88,7 +57,7 @@ jobs:
                 }));
               };
             }
-            if (typeof Promise.any !== 'function') {
+            if (!Promise.any) {
               Promise.any = function(promises) {
                 return new Promise(function(resolve, reject) {
                   var errors = [];
@@ -111,12 +80,48 @@ jobs:
                 return e;
               };
             }
+            if (!Array.prototype.flat) {
+              Array.prototype.flat = function(depth) {
+                var d = depth === undefined ? 1 : Math.floor(depth);
+                if (d < 1) return Array.prototype.slice.call(this);
+                return this.reduce(function(acc, val) {
+                  return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
+                }, []);
+              };
+            }
+            if (!Array.prototype.flatMap) {
+              Array.prototype.flatMap = function(callback, thisArg) {
+                return this.map(callback, thisArg).flat();
+              };
+            }
+            if (!Object.fromEntries) {
+              Object.fromEntries = function(entries) {
+                var obj = {};
+                for (var i = 0; i < entries.length; i++) {
+                  var entry = entries[i];
+                  obj[entry[0]] = entry[1];
+                }
+                return obj;
+              };
+            }
+            if (!String.prototype.matchAll) {
+              String.prototype.matchAll = function(regexp) {
+                var flags = regexp.flags;
+                if (!flags.includes('g')) flags += 'g';
+                var rx = new RegExp(regexp.source, flags);
+                var matches = [];
+                var match;
+                while ((match = rx.exec(this)) !== null) matches.push(match);
+                return matches[Symbol.iterator]();
+              };
+            }
+            console.log('[Polyfills] Basic ES2020-2025 loaded');
           })(window);
           POLYFILLS_EOF
 
       - name: Create iOS 15 fallbacks
         run: |
-          cat > patches/ios15-fallbacks.js << 'FALLBACKS_EOF'
+          cat > patches/15-ios15-fallbacks.js << 'FALLBACKS_EOF'
           (function(global) {
               if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
                   var proto = global.MediaQueryList.prototype;
@@ -189,13 +194,24 @@ jobs:
                       return ev;
                   };
               }
+              if (!Element.prototype.scrollTo) {
+                  Element.prototype.scrollTo = function(x, y) {
+                      if (typeof x === 'object') {
+                          this.scrollLeft = x.left || 0;
+                          this.scrollTop = x.top || 0;
+                      } else {
+                          this.scrollLeft = x || 0;
+                          this.scrollTop = y || 0;
+                      }
+                  };
+              }
               console.log('[iOS 15] Fallbacks loaded');
           })(window);
           FALLBACKS_EOF
 
       - name: Create loader.js
         run: |
-          cat > patches/loader.js << 'LOADER_EOF'
+          cat > patches/16-loader.js << 'LOADER_EOF'
           (function(){
             var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
             var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
@@ -232,9 +248,9 @@ jobs:
           })();
           LOADER_EOF
 
-      - name: Create dummy legacy-transpiler.js (placeholder – will be replaced by actual bundle)
+      - name: Create dummy legacy-transpiler.js
         run: |
-          echo "// LegacyTranspiler will be provided by core-js and other polyfills" > patches/legacy-transpiler.js
+          echo "// LegacyTranspiler placeholder - actual transpilation handled by core-js" > patches/17-legacy-transpiler.js
 
       - name: Copy all JS files to app bundle
         run: |
@@ -242,8 +258,9 @@ jobs:
           cp patches/*.js Payload/${APP_NAME}.app/
           echo "Files in app bundle:"
           ls -la Payload/${APP_NAME}.app/*.js
+          echo "Total size: $(du -sh Payload/${APP_NAME}.app/)"
 
-      - name: Generate Swift source with correct swipe gesture and aero UI
+      - name: Generate Swift source (fixed UserAgentManager error)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -256,6 +273,7 @@ jobs:
           class UserAgentManager {
               static let shared = UserAgentManager()
               private let defaults = UserDefaults.standard
+              
               enum UAMode: Int, CaseIterable {
                   case ios26 = 0, ios15 = 1, googleFix = 2, custom = 3
                   var displayName: String {
@@ -268,15 +286,26 @@ jobs:
                   }
                   var userAgentString: String {
                       switch self {
-                      case .ios26: return "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
-                      case .ios15: return "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
-                      case .googleFix: return "https://accounts.google.com"
-                      case .custom: return defaults.string(forKey: "custom_ua") ?? "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                      case .ios26:
+                          return "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+                      case .ios15:
+                          return "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                      case .googleFix:
+                          return "https://accounts.google.com"
+                      case .custom:
+                          return UserDefaults.standard.string(forKey: "custom_ua") ?? "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
                       }
                   }
               }
-              var currentMode: UAMode { get { return UAMode(rawValue: defaults.integer(forKey: "ua_mode")) ?? .ios26 } set { defaults.set(newValue.rawValue, forKey: "ua_mode") } }
-              var customUA: String { get { return defaults.string(forKey: "custom_ua") ?? "" } set { defaults.set(newValue, forKey: "custom_ua") } }
+              
+              var currentMode: UAMode {
+                  get { return UAMode(rawValue: defaults.integer(forKey: "ua_mode")) ?? .ios26 }
+                  set { defaults.set(newValue.rawValue, forKey: "ua_mode") }
+              }
+              var customUA: String {
+                  get { return defaults.string(forKey: "custom_ua") ?? "" }
+                  set { defaults.set(newValue, forKey: "custom_ua") }
+              }
               func userAgentForURL(_ url: URL?) -> String {
                   guard let host = url?.host?.lowercased() else { return currentMode.userAgentString }
                   if host.contains("accounts.google.com") { return UAMode.googleFix.userAgentString }
@@ -355,12 +384,15 @@ jobs:
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
                   let bundle = Bundle.main
-                  let jsFiles = ["polyfills", "core-js", "web-animations", "fetch", "abortcontroller", "urlpattern", "intersection-observer", "resize-observer", "streams", "structured-clone", "promise", "regenerator", "ios15-fallbacks", "legacy-transpiler", "loader"]
+                  let jsFiles = (0...17).map { "\($0)" }.flatMap { 
+                      let names = ["0-polyfills", "1-core-js", "2-regenerator", "3-promise", "4-fetch", "5-abortcontroller", "6-urlpattern", "7-intersection-observer", "8-resize-observer", "9-streams", "10-structured-clone", "11-web-animations", "12-blob", "13-encoding", "14-crypto", "15-ios15-fallbacks", "16-loader", "17-legacy-transpiler"]
+                      return names
+                  }
                   for fileName in jsFiles {
                       if let path = bundle.path(forResource: fileName, ofType: "js"), let js = try? String(contentsOfFile: path) {
                           config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
                           print("Loaded: \(fileName).js")
-                      } else { print("Warning: \(fileName).js missing") }
+                      }
                   }
                   webView = WKWebView(frame: .zero, configuration: config)
                   webView.translatesAutoresizingMaskIntoConstraints = false
@@ -383,7 +415,6 @@ jobs:
                   progressView.progressTintColor = UIColor.systemBlue
                   view.addSubview(progressView)
                   
-                  // Aero glass toolbar
                   let blur = UIBlurEffect(style: .systemChromeMaterial)
                   bottomToolbar = UIVisualEffectView(effect: blur)
                   bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
@@ -739,5 +770,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-SelfContained-Fixed
+          name: Modernize-Complete-Fixed
           path: Modernize.ipa

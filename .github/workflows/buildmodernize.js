@@ -1,0 +1,743 @@
+name: Build Modernize Browser (Self-Contained)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Create directory structure
+        run: |
+          mkdir -p patches
+          mkdir -p Payload/Modernize.app
+
+      - name: Download core-js (ES2020-2025 polyfill - ~600KB)
+        run: |
+          curl -L -o patches/core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
+          echo "Downloaded core-js: $(wc -c < patches/core-js.js) bytes"
+
+      - name: Download web-animations-js (Web Animations API - ~420KB)
+        run: |
+          curl -L -o patches/web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
+          echo "Downloaded web-animations: $(wc -c < patches/web-animations.js) bytes"
+
+      - name: Download whatwg-fetch (full fetch API)
+        run: |
+          curl -L -o patches/fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
+          echo "Downloaded fetch: $(wc -c < patches/fetch.js) bytes"
+
+      - name: Download abortcontroller-polyfill
+        run: |
+          curl -L -o patches/abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
+          echo "Downloaded abortcontroller: $(wc -c < patches/abortcontroller.js) bytes"
+
+      - name: Download urlpattern-polyfill
+        run: |
+          curl -L -o patches/urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
+          echo "Downloaded urlpattern: $(wc -c < patches/urlpattern.js) bytes"
+
+      - name: Download intersection-observer
+        run: |
+          curl -L -o patches/intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
+          echo "Downloaded intersection-observer: $(wc -c < patches/intersection-observer.js) bytes"
+
+      - name: Download resize-observer-polyfill
+        run: |
+          curl -L -o patches/resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
+          echo "Downloaded resize-observer: $(wc -c < patches/resize-observer.js) bytes"
+
+      - name: Download web-streams-polyfill
+        run: |
+          curl -L -o patches/streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
+          echo "Downloaded streams: $(wc -c < patches/streams.js) bytes"
+
+      - name: Download structured-clone-polyfill
+        run: |
+          curl -L -o patches/structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
+          echo "Downloaded structured-clone: $(wc -c < patches/structured-clone.js) bytes"
+
+      - name: Download promise-polyfill
+        run: |
+          curl -L -o patches/promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
+          echo "Downloaded promise: $(wc -c < patches/promise.js) bytes"
+
+      - name: Download regenerator-runtime (async/await)
+        run: |
+          curl -L -o patches/regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
+          echo "Downloaded regenerator: $(wc -c < patches/regenerator.js) bytes"
+
+      - name: Create polyfills.js (basic)
+        run: |
+          cat > patches/polyfills.js << 'POLYFILLS_EOF'
+          (function(global){
+            if (!global.queueMicrotask) global.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
+            if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
+            if (!String.prototype.at) String.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
+            if (!Object.hasOwn) Object.hasOwn = function(obj,prop){ return Object.prototype.hasOwnProperty.call(obj,prop); };
+            if (!String.prototype.replaceAll) String.prototype.replaceAll = function(s,r){ if(typeof s==="string")return this.split(s).join(r); if(s instanceof RegExp){if(!s.global)throw new TypeError("Global RegExp required"); return this.replace(s,r);} return this.replace(s,r); };
+            if (typeof global.globalThis === 'undefined') global.globalThis = global;
+            if (typeof Promise.allSettled !== 'function') {
+              Promise.allSettled = function(promises) {
+                return Promise.all(promises.map(function(p) {
+                  return Promise.resolve(p).then(
+                    function(v) { return { status: 'fulfilled', value: v }; },
+                    function(r) { return { status: 'rejected', reason: r }; }
+                  );
+                }));
+              };
+            }
+            if (typeof Promise.any !== 'function') {
+              Promise.any = function(promises) {
+                return new Promise(function(resolve, reject) {
+                  var errors = [];
+                  var pending = promises.length;
+                  if (pending === 0) reject(new AggregateError([], 'All promises rejected'));
+                  for (var i = 0; i < promises.length; i++) {
+                    Promise.resolve(promises[i]).then(resolve, function(err) {
+                      errors[i] = err;
+                      if (--pending === 0) reject(new AggregateError(errors, 'All promises rejected'));
+                    });
+                  }
+                });
+              };
+            }
+            if (typeof AggregateError === 'undefined') {
+              global.AggregateError = function(errors, message) {
+                var e = new Error(message);
+                e.errors = errors;
+                e.name = 'AggregateError';
+                return e;
+              };
+            }
+          })(window);
+          POLYFILLS_EOF
+
+      - name: Create iOS 15 fallbacks
+        run: |
+          cat > patches/ios15-fallbacks.js << 'FALLBACKS_EOF'
+          (function(global) {
+              if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
+                  var proto = global.MediaQueryList.prototype;
+                  var wrappers = new WeakMap();
+                  proto.addEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.addListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (!wrapper) {
+                              wrapper = function(ev) { listener.handleEvent(ev); };
+                              wrappers.set(listener, wrapper);
+                          }
+                          proto.addListener.call(this, wrapper);
+                      }
+                  };
+                  proto.removeEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.removeListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (wrapper) proto.removeListener.call(this, wrapper);
+                      }
+                  };
+              }
+              if (!global.CSS) global.CSS = {};
+              if (typeof CSS.supports !== 'function') {
+                  CSS.supports = function(prop, value) {
+                      var el = document.createElement('div');
+                      if (arguments.length === 1) {
+                          var pair = prop.split(':');
+                          return typeof el.style[pair[0].trim()] !== 'undefined';
+                      }
+                      return typeof el.style[prop] !== 'undefined';
+                  };
+              }
+              if (typeof requestIdleCallback !== 'function') {
+                  global.requestIdleCallback = function(cb) {
+                      return setTimeout(function() {
+                          cb({ didTimeout: false, timeRemaining: function() { return 50; } });
+                      }, 1);
+                  };
+                  global.cancelIdleCallback = function(id) { clearTimeout(id); };
+              }
+              if (typeof reportError !== 'function') {
+                  global.reportError = function(err) {
+                      setTimeout(function() { throw err; }, 0);
+                  };
+              }
+              if (!Element.prototype.attachShadow) {
+                  Element.prototype.attachShadow = function() {
+                      var root = document.createElement('div');
+                      root.setAttribute('data-shadow-root', '');
+                      this.appendChild(root);
+                      return root;
+                  };
+              }
+              if (!global.navigator.credentials) {
+                  global.navigator.credentials = { get: function() { return Promise.resolve(null); } };
+              }
+              if (global.Atomics && !global.Atomics.waitAsync) {
+                  global.Atomics.waitAsync = function() { return Promise.reject(new Error('Not supported')); };
+              }
+              if (typeof CustomEvent !== 'function') {
+                  global.CustomEvent = function(type, options) {
+                      var ev = document.createEvent('CustomEvent');
+                      ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
+                      return ev;
+                  };
+              }
+              console.log('[iOS 15] Fallbacks loaded');
+          })(window);
+          FALLBACKS_EOF
+
+      - name: Create loader.js
+        run: |
+          cat > patches/loader.js << 'LOADER_EOF'
+          (function(){
+            var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+            var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
+            console.log("Loader active for iOS " + iosVersion);
+            if (typeof window.LegacyTranspiler !== "undefined") {
+              window.LegacyTranspiler.init({
+                BASE_URL: window.location.origin,
+                runScript: function(code) {
+                  try {
+                    var script = document.createElement("script");
+                    script.textContent = code;
+                    (document.head || document.documentElement).appendChild(script);
+                    script.remove();
+                  } catch(e) { console.error(e); }
+                },
+                target: { platform: "iOS", version: iosVersion },
+                minify: true
+              });
+            }
+            var observer = new MutationObserver(function(mutations) {
+              for (var i = 0; i < mutations.length; i++) {
+                var nodes = mutations[i].addedNodes;
+                for (var j = 0; j < nodes.length; j++) {
+                  var node = nodes[j];
+                  if (node.tagName === "SCRIPT" && node.src && !node.hasAttribute('data-transpiled')) {
+                    node.setAttribute('data-transpiled', 'true');
+                    node.type = "javascript/blocked";
+                    if (window.LegacyTranspiler) window.LegacyTranspiler.loadCode(node.src);
+                  }
+                }
+              }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+          })();
+          LOADER_EOF
+
+      - name: Create dummy legacy-transpiler.js (placeholder – will be replaced by actual bundle)
+        run: |
+          echo "// LegacyTranspiler will be provided by core-js and other polyfills" > patches/legacy-transpiler.js
+
+      - name: Copy all JS files to app bundle
+        run: |
+          APP_NAME="Modernize"
+          cp patches/*.js Payload/${APP_NAME}.app/
+          echo "Files in app bundle:"
+          ls -la Payload/${APP_NAME}.app/*.js
+
+      - name: Generate Swift source with correct swipe gesture and aero UI
+        run: |
+          cat > app.swift << 'SWIFT'
+          import UIKit
+          import WebKit
+
+          struct Bookmark: Codable { var id = UUID(); var title: String; var url: String; var dateAdded: Date }
+          struct HistoryEntry: Codable { var id = UUID(); var title: String; var url: String; var date: Date }
+          struct TabState: Codable { var id = UUID(); var title: String; var url: String; var isPrivate: Bool }
+
+          class UserAgentManager {
+              static let shared = UserAgentManager()
+              private let defaults = UserDefaults.standard
+              enum UAMode: Int, CaseIterable {
+                  case ios26 = 0, ios15 = 1, googleFix = 2, custom = 3
+                  var displayName: String {
+                      switch self {
+                      case .ios26: return "iOS 26"
+                      case .ios15: return "iOS 15"
+                      case .googleFix: return "Google Fix"
+                      case .custom: return "Custom"
+                      }
+                  }
+                  var userAgentString: String {
+                      switch self {
+                      case .ios26: return "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+                      case .ios15: return "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                      case .googleFix: return "https://accounts.google.com"
+                      case .custom: return defaults.string(forKey: "custom_ua") ?? "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                      }
+                  }
+              }
+              var currentMode: UAMode { get { return UAMode(rawValue: defaults.integer(forKey: "ua_mode")) ?? .ios26 } set { defaults.set(newValue.rawValue, forKey: "ua_mode") } }
+              var customUA: String { get { return defaults.string(forKey: "custom_ua") ?? "" } set { defaults.set(newValue, forKey: "custom_ua") } }
+              func userAgentForURL(_ url: URL?) -> String {
+                  guard let host = url?.host?.lowercased() else { return currentMode.userAgentString }
+                  if host.contains("accounts.google.com") { return UAMode.googleFix.userAgentString }
+                  if currentMode == .custom { return customUA.isEmpty ? UAMode.ios26.userAgentString : customUA }
+                  return currentMode.userAgentString
+              }
+          }
+
+          class HistoryManager {
+              static let shared = HistoryManager(); private let defaults = UserDefaults.standard; private let key = "browser_history"
+              var history: [HistoryEntry] { get { guard let data = defaults.data(forKey: key), let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return [] }; return entries } set { if let data = try? JSONEncoder().encode(Array(newValue.prefix(500))) { defaults.set(data, forKey: key) } } }
+              func addEntry(title: String, url: String) { var current = history; current.removeAll { $0.url == url }; current.insert(HistoryEntry(title: title, url: url, date: Date()), at: 0); history = current }
+              func clear() { history = [] }
+          }
+          class BookmarkManager {
+              static let shared = BookmarkManager(); private let defaults = UserDefaults.standard; private let key = "browser_bookmarks"
+              var bookmarks: [Bookmark] { get { guard let data = defaults.data(forKey: key), let items = try? JSONDecoder().decode([Bookmark].self, from: data) else { return [] }; return items } set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: key) } } }
+              func add(title: String, url: String) { var current = bookmarks; current.removeAll { $0.url == url }; current.insert(Bookmark(title: title, url: url, dateAdded: Date()), at: 0); bookmarks = current }
+              func remove(at index: Int) { var current = bookmarks; current.remove(at: index); bookmarks = current }
+          }
+          class DownloadManager: NSObject, WKDownloadDelegate {
+              static let shared = DownloadManager(); private override init() { super.init(); createFolder() }
+              private func createFolder() { let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!; let folder = docs.appendingPathComponent("Modernize"); if !FileManager.default.fileExists(atPath: folder.path) { try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) } }
+              private func folder() -> URL { return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("Modernize") }
+              @available(iOS 15.0, *) func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? { return folder().appendingPathComponent(suggestedFilename) }
+              func downloadDidFinish(_ download: WKDownload) { }
+              func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) { }
+          }
+
+          class TabManager {
+              static let shared = TabManager(); private init() {}
+              var tabs: [TabState] = []; var privateTabs: [TabState] = []; var privateMode = false; var currentIndex = 0
+              var currentTabs: [TabState] { return privateMode ? privateTabs : tabs }
+              var currentTab: TabState? { guard currentIndex < currentTabs.count else { return nil }; return currentTabs[currentIndex] }
+              func addTab(url: String? = nil, title: String = "New Tab", isPrivate: Bool = false) {
+                  let newTab = TabState(title: title, url: url ?? "https://www.google.com", isPrivate: isPrivate)
+                  if isPrivate { privateTabs.append(newTab); currentIndex = privateTabs.count - 1 }
+                  else { tabs.append(newTab); currentIndex = tabs.count - 1 }
+              }
+              func updateCurrentTab(title: String, url: String) {
+                  guard currentIndex < currentTabs.count else { return }
+                  if privateMode { privateTabs[currentIndex].title = title; privateTabs[currentIndex].url = url }
+                  else { tabs[currentIndex].title = title; tabs[currentIndex].url = url }
+              }
+              func closeTab(at index: Int) {
+                  if privateMode { privateTabs.remove(at: index); if privateTabs.isEmpty { addTab(isPrivate: true) }; if currentIndex >= privateTabs.count { currentIndex = privateTabs.count - 1 } }
+                  else { tabs.remove(at: index); if tabs.isEmpty { addTab() }; if currentIndex >= tabs.count { currentIndex = tabs.count - 1 } }
+              }
+              func clearAll() { if privateMode { privateTabs.removeAll(); addTab(isPrivate: true) } else { tabs.removeAll(); addTab() }; currentIndex = 0 }
+          }
+
+          class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate {
+              var webView: WKWebView!
+              var urlTextField: UITextField!
+              var backButton, forwardButton, reloadButton, tabsButton, menuButton: UIButton!
+              var progressView: UIProgressView!
+              var bottomToolbar: UIVisualEffectView!
+              var bottomConstraint: NSLayoutConstraint!
+              private var toolbarHidden = false
+              
+              override func viewDidLoad() {
+                  super.viewDidLoad()
+                  view.backgroundColor = UIColor.systemBackground
+                  setupWebView()
+                  setupUI()
+                  setupKeyboardHandling()
+                  setupSwipeGestures()
+                  if TabManager.shared.tabs.isEmpty { TabManager.shared.addTab() }
+                  loadCurrentTab()
+              }
+              
+              deinit { webView?.removeObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress)) }
+              
+              func setupWebView() {
+                  let config = WKWebViewConfiguration()
+                  config.allowsInlineMediaPlayback = true
+                  config.mediaTypesRequiringUserActionForPlayback = []
+                  let bundle = Bundle.main
+                  let jsFiles = ["polyfills", "core-js", "web-animations", "fetch", "abortcontroller", "urlpattern", "intersection-observer", "resize-observer", "streams", "structured-clone", "promise", "regenerator", "ios15-fallbacks", "legacy-transpiler", "loader"]
+                  for fileName in jsFiles {
+                      if let path = bundle.path(forResource: fileName, ofType: "js"), let js = try? String(contentsOfFile: path) {
+                          config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+                          print("Loaded: \(fileName).js")
+                      } else { print("Warning: \(fileName).js missing") }
+                  }
+                  webView = WKWebView(frame: .zero, configuration: config)
+                  webView.translatesAutoresizingMaskIntoConstraints = false
+                  webView.navigationDelegate = self
+                  webView.uiDelegate = self
+                  webView.allowsBackForwardNavigationGestures = true
+                  view.addSubview(webView)
+                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
+              }
+              
+              func loadCurrentTab() {
+                  guard let urlString = TabManager.shared.currentTab?.url, let url = URL(string: urlString) else { return }
+                  webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
+                  webView.load(URLRequest(url: url))
+              }
+              
+              func setupUI() {
+                  progressView = UIProgressView(progressViewStyle: .bar)
+                  progressView.translatesAutoresizingMaskIntoConstraints = false
+                  progressView.progressTintColor = UIColor.systemBlue
+                  view.addSubview(progressView)
+                  
+                  // Aero glass toolbar
+                  let blur = UIBlurEffect(style: .systemChromeMaterial)
+                  bottomToolbar = UIVisualEffectView(effect: blur)
+                  bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
+                  bottomToolbar.layer.cornerRadius = 16
+                  bottomToolbar.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+                  bottomToolbar.clipsToBounds = true
+                  view.addSubview(bottomToolbar)
+                  
+                  urlTextField = UITextField()
+                  urlTextField.translatesAutoresizingMaskIntoConstraints = false
+                  urlTextField.placeholder = "Search or enter URL"
+                  urlTextField.borderStyle = .roundedRect
+                  urlTextField.backgroundColor = UIColor.systemGray6
+                  urlTextField.autocapitalizationType = .none
+                  urlTextField.autocorrectionType = .no
+                  urlTextField.keyboardType = .URL
+                  urlTextField.returnKeyType = .go
+                  urlTextField.delegate = self
+                  urlTextField.clearButtonMode = .whileEditing
+                  bottomToolbar.contentView.addSubview(urlTextField)
+                  
+                  let buttonStack = UIStackView()
+                  buttonStack.translatesAutoresizingMaskIntoConstraints = false
+                  buttonStack.axis = .horizontal
+                  buttonStack.distribution = .equalSpacing
+                  buttonStack.alignment = .center
+                  buttonStack.spacing = 20
+                  bottomToolbar.contentView.addSubview(buttonStack)
+                  
+                  func btn(_ name: String, _ action: Selector) -> UIButton {
+                      let b = UIButton(type: .system)
+                      b.setImage(UIImage(systemName: name), for: .normal)
+                      b.addTarget(self, action: action, for: .touchUpInside)
+                      b.tintColor = UIColor.label
+                      return b
+                  }
+                  backButton = btn("chevron.left", #selector(goBack))
+                  forwardButton = btn("chevron.right", #selector(goForward))
+                  reloadButton = btn("arrow.clockwise", #selector(reload))
+                  tabsButton = btn("square.on.square", #selector(showTabSwitcher))
+                  menuButton = btn("ellipsis", #selector(showMenu))
+                  [backButton, forwardButton, reloadButton, tabsButton, menuButton].forEach { buttonStack.addArrangedSubview($0) }
+                  
+                  NSLayoutConstraint.activate([
+                      webView.topAnchor.constraint(equalTo: view.topAnchor),
+                      webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                      webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                      webView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
+                      progressView.topAnchor.constraint(equalTo: webView.bottomAnchor),
+                      progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                      progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                      progressView.heightAnchor.constraint(equalToConstant: 2),
+                      bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                      bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                      bottomToolbar.heightAnchor.constraint(equalToConstant: 100),
+                      urlTextField.topAnchor.constraint(equalTo: bottomToolbar.contentView.topAnchor, constant: 8),
+                      urlTextField.leadingAnchor.constraint(equalTo: bottomToolbar.contentView.leadingAnchor, constant: 16),
+                      urlTextField.trailingAnchor.constraint(equalTo: bottomToolbar.contentView.trailingAnchor, constant: -16),
+                      urlTextField.heightAnchor.constraint(equalToConstant: 40),
+                      buttonStack.topAnchor.constraint(equalTo: urlTextField.bottomAnchor, constant: 4),
+                      buttonStack.leadingAnchor.constraint(equalTo: bottomToolbar.contentView.leadingAnchor, constant: 20),
+                      buttonStack.trailingAnchor.constraint(equalTo: bottomToolbar.contentView.trailingAnchor, constant: -20),
+                      buttonStack.bottomAnchor.constraint(equalTo: bottomToolbar.contentView.bottomAnchor, constant: -8),
+                      buttonStack.heightAnchor.constraint(equalToConstant: 44)
+                  ])
+                  bottomConstraint = bottomToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+                  bottomConstraint.isActive = true
+              }
+              
+              func setupSwipeGestures() {
+                  let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeUp))
+                  swipeUp.direction = .up
+                  swipeUp.delegate = self
+                  webView.addGestureRecognizer(swipeUp)
+                  let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeDown))
+                  swipeDown.direction = .down
+                  swipeDown.delegate = self
+                  webView.addGestureRecognizer(swipeDown)
+              }
+              
+              @objc func handleSwipeUp() {
+                  guard !toolbarHidden else { return }
+                  toolbarHidden = true
+                  UIView.animate(withDuration: 0.3) {
+                      self.bottomConstraint.constant = -self.bottomToolbar.bounds.height
+                      self.view.layoutIfNeeded()
+                  }
+              }
+              
+              @objc func handleSwipeDown() {
+                  guard toolbarHidden else { return }
+                  toolbarHidden = false
+                  UIView.animate(withDuration: 0.3) {
+                      self.bottomConstraint.constant = 0
+                      self.view.layoutIfNeeded()
+                  }
+              }
+              
+              func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { return true }
+              
+              func setupKeyboardHandling() {
+                  NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
+                  NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
+                  let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+                  tap.cancelsTouchesInView = false
+                  webView.addGestureRecognizer(tap)
+              }
+              
+              @objc func keyboardWillShow(_ n: Notification) {
+                  guard let frame = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                  let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                  let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+                  UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+                      self.bottomConstraint.constant = -frame.height + self.view.safeAreaInsets.bottom
+                      self.view.layoutIfNeeded()
+                  }
+              }
+              
+              @objc func keyboardWillHide(_ n: Notification) {
+                  let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                  let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+                  UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+                      self.bottomConstraint.constant = self.toolbarHidden ? -self.bottomToolbar.bounds.height : 0
+                      self.view.layoutIfNeeded()
+                  }
+              }
+              
+              @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
+              
+              func loadURL(_ url: URL) {
+                  webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
+                  webView.load(URLRequest(url: url))
+                  urlTextField.text = url.absoluteString
+              }
+              
+              func loadSearch(_ query: String) {
+                  let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+                  if let url = URL(string: "https://www.google.com/search?q=\(encoded)") { loadURL(url) }
+              }
+              
+              @objc func goBack() { webView.goBack() }
+              @objc func goForward() { webView.goForward() }
+              @objc func reload() { if webView.isLoading { webView.stopLoading() } else { webView.reload() } }
+              
+              @objc func showTabSwitcher() {
+                  let alert = UIAlertController(title: "Tabs", message: nil, preferredStyle: .actionSheet)
+                  for (i, tab) in TabManager.shared.currentTabs.enumerated() {
+                      alert.addAction(UIAlertAction(title: "\(i+1). \(tab.title)", style: .default) { _ in
+                          TabManager.shared.currentIndex = i
+                          self.loadCurrentTab()
+                      })
+                  }
+                  alert.addAction(UIAlertAction(title: "New Tab", style: .default) { _ in
+                      TabManager.shared.addTab()
+                      self.loadCurrentTab()
+                  })
+                  alert.addAction(UIAlertAction(title: "Private Mode: \(TabManager.shared.privateMode ? "ON" : "OFF")", style: .default) { _ in
+                      TabManager.shared.privateMode.toggle()
+                      TabManager.shared.currentIndex = 0
+                      if TabManager.shared.currentTabs.isEmpty { TabManager.shared.addTab(isPrivate: TabManager.shared.privateMode) }
+                      self.loadCurrentTab()
+                      self.tabsButton.setImage(UIImage(systemName: TabManager.shared.privateMode ? "lock.fill" : "square.on.square"), for: .normal)
+                  })
+                  alert.addAction(UIAlertAction(title: "Close Current Tab", style: .destructive) { _ in
+                      TabManager.shared.closeTab(at: TabManager.shared.currentIndex)
+                      self.loadCurrentTab()
+                  })
+                  alert.addAction(UIAlertAction(title: "Close All Tabs", style: .destructive) { _ in
+                      TabManager.shared.clearAll()
+                      self.loadCurrentTab()
+                  })
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  if let popover = alert.popoverPresentationController { popover.sourceView = tabsButton; popover.sourceRect = tabsButton.bounds }
+                  self.present(alert, animated: true)
+              }
+              
+              @objc func showMenu() {
+                  let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+                  let uaMenu = UIAlertController(title: "User Agent", message: nil, preferredStyle: .actionSheet)
+                  for mode in UserAgentManager.UAMode.allCases {
+                      let isCurrent = UserAgentManager.shared.currentMode == mode
+                      uaMenu.addAction(UIAlertAction(title: mode.displayName + (isCurrent ? " ✓" : ""), style: .default) { _ in
+                          UserAgentManager.shared.currentMode = mode
+                          if mode == .custom { self.promptForCustomUA() } else { self.webView.reload() }
+                      })
+                  }
+                  uaMenu.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  alert.addAction(UIAlertAction(title: "User Agent", style: .default) { _ in self.present(uaMenu, animated: true) })
+                  alert.addAction(UIAlertAction(title: "Bookmarks", style: .default) { _ in self.showBookmarks() })
+                  alert.addAction(UIAlertAction(title: "History", style: .default) { _ in self.showHistory() })
+                  alert.addAction(UIAlertAction(title: "Add to Bookmarks", style: .default) { _ in
+                      if let url = self.webView.url?.absoluteString, let title = self.webView.title {
+                          BookmarkManager.shared.add(title: title, url: url)
+                          let confirm = UIAlertController(title: "Saved", message: title, preferredStyle: .alert)
+                          confirm.addAction(UIAlertAction(title: "OK", style: .default))
+                          self.present(confirm, animated: true)
+                      }
+                  })
+                  alert.addAction(UIAlertAction(title: "Share", style: .default) { _ in
+                      if let url = self.webView.url {
+                          let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                          self.present(activity, animated: true)
+                      }
+                  })
+                  alert.addAction(UIAlertAction(title: "Clear History", style: .destructive) { _ in
+                      HistoryManager.shared.clear()
+                      let confirm = UIAlertController(title: "Cleared", message: "History cleared", preferredStyle: .alert)
+                      confirm.addAction(UIAlertAction(title: "OK", style: .default))
+                      self.present(confirm, animated: true)
+                  })
+                  alert.addAction(UIAlertAction(title: "Clear Bookmarks", style: .destructive) { _ in
+                      BookmarkManager.shared.bookmarks = []
+                      let confirm = UIAlertController(title: "Cleared", message: "Bookmarks cleared", preferredStyle: .alert)
+                      confirm.addAction(UIAlertAction(title: "OK", style: .default))
+                      self.present(confirm, animated: true)
+                  })
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  if let popover = alert.popoverPresentationController { popover.sourceView = menuButton; popover.sourceRect = menuButton.bounds }
+                  self.present(alert, animated: true)
+              }
+              
+              func promptForCustomUA() {
+                  let alert = UIAlertController(title: "Custom UA", message: "Enter user agent string", preferredStyle: .alert)
+                  alert.addTextField { $0.placeholder = "User Agent" }
+                  alert.addAction(UIAlertAction(title: "Save", style: .default) { _ in
+                      if let text = alert.textFields?.first?.text, !text.isEmpty {
+                          UserAgentManager.shared.customUA = text
+                          self.webView.reload()
+                      }
+                  })
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  self.present(alert, animated: true)
+              }
+              
+              func showBookmarks() {
+                  let alert = UIAlertController(title: "Bookmarks", message: nil, preferredStyle: .actionSheet)
+                  for b in BookmarkManager.shared.bookmarks {
+                      alert.addAction(UIAlertAction(title: b.title, style: .default) { _ in
+                          if let url = URL(string: b.url) { self.loadURL(url) }
+                      })
+                  }
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  self.present(alert, animated: true)
+              }
+              
+              func showHistory() {
+                  let alert = UIAlertController(title: "History", message: nil, preferredStyle: .actionSheet)
+                  for e in HistoryManager.shared.history.prefix(20) {
+                      alert.addAction(UIAlertAction(title: e.title, style: .default) { _ in
+                          if let url = URL(string: e.url) { self.loadURL(url) }
+                      })
+                  }
+                  alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                  self.present(alert, animated: true)
+              }
+              
+              func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+                  textField.resignFirstResponder()
+                  guard let text = textField.text, !text.isEmpty else { return true }
+                  if text.hasPrefix("http://") || text.hasPrefix("https://") { if let url = URL(string: text) { loadURL(url) } }
+                  else if text.contains(".") && !text.contains(" ") { if let url = URL(string: "https://\(text)") { loadURL(url) } }
+                  else { loadSearch(text) }
+                  return true
+              }
+              
+              override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+                  if keyPath == #keyPath(WKWebView.estimatedProgress) {
+                      progressView.progress = Float(webView.estimatedProgress)
+                      progressView.isHidden = webView.estimatedProgress >= 1.0
+                  }
+              }
+              
+              func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+                  urlTextField.text = webView.url?.absoluteString
+                  backButton.isEnabled = webView.canGoBack
+                  forwardButton.isEnabled = webView.canGoForward
+                  if let url = webView.url?.absoluteString, let title = webView.title {
+                      TabManager.shared.updateCurrentTab(title: title, url: url)
+                      if !TabManager.shared.privateMode { HistoryManager.shared.addEntry(title: title, url: url) }
+                  }
+              }
+              
+              func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+                  if let mime = navigationResponse.response.mimeType, mime != "text/html" && !mime.hasPrefix("text/") && !mime.hasPrefix("application/json") { decisionHandler(.download) } else { decisionHandler(.allow) }
+              }
+              func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = DownloadManager.shared }
+              func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = DownloadManager.shared }
+              func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? { if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }; return nil }
+              func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) { let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert); alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() }); present(alert, animated: true) }
+              func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) { let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert); alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) }); alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) }); present(alert, animated: true) }
+              func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) { let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert); alert.addTextField { $0.text = defaultText }; alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(alert.textFields?.first?.text) }); alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) }); present(alert, animated: true) }
+          }
+
+          class AppDelegate: UIResponder, UIApplicationDelegate {
+              var window: UIWindow?
+              func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+                  window = UIWindow(frame: UIScreen.main.bounds)
+                  window?.rootViewController = BrowserViewController()
+                  window?.makeKeyAndVisible()
+                  return true
+              }
+          }
+
+          UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
+          SWIFT
+
+      - name: Compile Swift
+        run: |
+          APP_NAME="Modernize"
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun -sdk iphoneos swiftc -target arm64-apple-ios15.0 -framework UIKit -framework WebKit -o Payload/${APP_NAME}.app/${APP_NAME} app.swift
+          chmod +x Payload/${APP_NAME}.app/${APP_NAME}
+
+      - name: Create Info.plist
+        run: |
+          APP_NAME="Modernize"
+          cat > Payload/${APP_NAME}.app/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleExecutable</key><string>Modernize</string>
+          <key>CFBundleIdentifier</key><string>com.modernize.browser</string>
+          <key>CFBundleName</key><string>Modernize</string>
+          <key>CFBundleDisplayName</key><string>Modernize</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>CFBundleShortVersionString</key><string>1.0</string>
+          <key>CFBundleVersion</key><string>1</string>
+          <key>LSRequiresIPhoneOS</key><true/>
+          <key>MinimumOSVersion</key><string>15.0</string>
+          <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+          <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+          <key>UIViewControllerBasedStatusBarAppearance</key><true/>
+          <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+          <key>NSMicrophoneUsageDescription</key><string>Modernize needs microphone</string>
+          <key>NSCameraUsageDescription</key><string>Modernize needs camera</string>
+          <key>NSPhotoLibraryUsageDescription</key><string>Modernize needs photo library</string>
+          <key>UIFileSharingEnabled</key><true/>
+          <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>modernize</string><string>http</string><string>https</string></array></dict></array>
+          <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon-60</string><string>Icon-76</string></array></dict></dict>
+          </dict></plist>
+          PLIST
+
+      - name: Create PkgInfo
+        run: |
+          APP_NAME="Modernize"
+          printf 'APPL????' > Payload/${APP_NAME}.app/PkgInfo
+
+      - name: Create IPA
+        run: |
+          APP_NAME="Modernize"
+          zip -r ${APP_NAME}.ipa Payload/
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Modernize-SelfContained-Fixed
+          path: Modernize.ipa

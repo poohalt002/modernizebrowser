@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Final - 100% iOS 26 Compatibility)
+name: Build Modernize Browser (Final - z.ai & arena.ai)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -14,469 +14,426 @@ jobs:
       - name: Create patches folder
         run: mkdir -p patches
 
-      - name: Download ALL iOS 26 polyfills (16 files - complete set)
+      - name: Create GLM‑style polyfills.js
         run: |
-          mkdir -p patches/downloads
-          
-          echo "Downloading core-js (full ES2020-2025) - 600KB..."
-          curl -L -o patches/downloads/01-core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
-          
-          echo "Downloading regenerator-runtime (async/await) - 50KB..."
-          curl -L -o patches/downloads/02-regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
-          
-          echo "Downloading whatwg-fetch (fetch API) - 15KB..."
-          curl -L -o patches/downloads/03-fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
-          
-          echo "Downloading abortcontroller-polyfill - 8KB..."
-          curl -L -o patches/downloads/04-abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
-          
-          echo "Downloading urlpattern-polyfill - 30KB..."
-          curl -L -o patches/downloads/05-urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
-          
-          echo "Downloading intersection-observer - 10KB..."
-          curl -L -o patches/downloads/06-intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
-          
-          echo "Downloading resize-observer-polyfill - 12KB..."
-          curl -L -o patches/downloads/07-resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
-          
-          echo "Downloading web-streams-polyfill - 35KB..."
-          curl -L -o patches/downloads/08-streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
-          
-          echo "Downloading structured-clone-polyfill - 8KB..."
-          curl -L -o patches/downloads/09-structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
-          
-          echo "Downloading web-animations-js - 420KB..."
-          curl -L -o patches/downloads/10-web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
-          
-          echo "Downloading promise-polyfill - 8KB..."
-          curl -L -o patches/downloads/11-promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
-          
-          echo "Downloading text-encoding - 20KB..."
-          curl -L -o patches/downloads/12-encoding.js https://cdn.jsdelivr.net/npm/text-encoding@0.7.0/lib/encoding.min.js
-          
-          echo "Downloading blob-polyfill - 5KB..."
-          curl -L -o patches/downloads/13-blob.js https://cdn.jsdelivr.net/npm/blob-polyfill@1.0.20221007/index.js
-          
-          echo "Downloading crypto-js (subtle crypto fallback) - 180KB..."
-          curl -L -o patches/downloads/14-crypto.js https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.js
-          
-          echo "Downloading broadcastchannel-polyfill - 6KB..."
-          curl -L -o patches/downloads/15-broadcastchannel.js https://cdn.jsdelivr.net/npm/broadcastchannel@1.7.0/dist/BroadcastChannel.js
-          
-          echo "Downloading mediasource-polyfill (for video streaming) - 15KB..."
-          curl -L -o patches/downloads/16-mediasource.js https://cdn.jsdelivr.net/npm/mediasource-polyfill@2.1.0/MediaSource.js
-          
-          echo "All 16 polyfills downloaded successfully"
-          ls -la patches/downloads/
-
-      - name: Create COMBINED polyfills file (ALL features in one - prevents injection bug)
-        run: |
-          # Create single combined polyfills file by concatenating all downloads
-          cat > patches/polyfills.js << 'POLYFILLS_HEADER'
-          // ============================================================
-          // COMBINED POLYFILLS - Complete iOS 26 Compatibility
-          // 16 polyfills combined into ONE file
-          // This prevents iOS 15's WKUserScript injection corruption
-          // ============================================================
-          POLYFILLS_HEADER
-          
-          # Add each polyfill with header comments
-          echo "// === 01: core-js (ES2020-2025) ===" >> patches/polyfills.js
-          cat patches/downloads/01-core-js.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 02: regenerator-runtime (async/await) ===" >> patches/polyfills.js
-          cat patches/downloads/02-regenerator.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 03: whatwg-fetch (fetch API) ===" >> patches/polyfills.js
-          cat patches/downloads/03-fetch.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 04: abortcontroller-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/04-abortcontroller.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 05: urlpattern-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/05-urlpattern.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 06: intersection-observer ===" >> patches/polyfills.js
-          cat patches/downloads/06-intersection-observer.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 07: resize-observer-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/07-resize-observer.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 08: web-streams-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/08-streams.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 09: structured-clone-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/09-structured-clone.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 10: web-animations-js (420KB) ===" >> patches/polyfills.js
-          cat patches/downloads/10-web-animations.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 11: promise-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/11-promise.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 12: text-encoding ===" >> patches/polyfills.js
-          cat patches/downloads/12-encoding.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 13: blob-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/13-blob.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 14: crypto-js ===" >> patches/polyfills.js
-          cat patches/downloads/14-crypto.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 15: broadcastchannel-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/15-broadcastchannel.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          echo "// === 16: mediasource-polyfill ===" >> patches/polyfills.js
-          cat patches/downloads/16-mediasource.js >> patches/polyfills.js
-          echo "" >> patches/polyfills.js
-          
-          # Add iOS 15 specific fixes
-          cat >> patches/polyfills.js << 'IOS15_FIXES'
-          
-          // === iOS 15 Specific Web API Fixes ===
-          (function(global) {
-              'use strict';
-              
-              // MediaQueryList event listener fix
-              if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
-                  var proto = global.MediaQueryList.prototype;
-                  var wrappers = new WeakMap();
-                  proto.addEventListener = function(type, listener) {
-                      if (type !== 'change') return;
-                      if (typeof listener === 'function') {
-                          proto.addListener.call(this, listener);
-                      } else {
-                          var wrapper = wrappers.get(listener);
-                          if (!wrapper) {
-                              wrapper = function(ev) { listener.handleEvent(ev); };
-                              wrappers.set(listener, wrapper);
-                          }
-                          proto.addListener.call(this, wrapper);
-                      }
-                  };
-                  proto.removeEventListener = function(type, listener) {
-                      if (type !== 'change') return;
-                      if (typeof listener === 'function') {
-                          proto.removeListener.call(this, listener);
-                      } else {
-                          var wrapper = wrappers.get(listener);
-                          if (wrapper) proto.removeListener.call(this, wrapper);
-                      }
-                  };
+          cat > patches/polyfills.js << 'POLYFILLS_EOF'
+          (function(w){
+            function getProto() {
+              if (w.MediaQueryList) return w.MediaQueryList.prototype;
+              if (typeof w.matchMedia === "function") {
+                var mql = w.matchMedia("all");
+                return Object.getPrototypeOf(mql);
               }
-              
-              // CSS.supports
-              if (!global.CSS) global.CSS = {};
-              if (typeof CSS.supports !== 'function') {
-                  CSS.supports = function(prop, value) {
-                      var el = document.createElement('div');
-                      if (arguments.length === 1) {
-                          var pair = prop.split(':');
-                          return typeof el.style[pair[0].trim()] !== 'undefined';
-                      }
-                      return typeof el.style[prop] !== 'undefined';
-                  };
+            }
+            var proto = getProto();
+            if (!proto) return;
+            var wrappers = new WeakMap();
+            proto.addEventListener = proto.addEventListener || function(type, listener) {
+              if (type !== "change") return;
+              if (typeof listener === "function") {
+                proto.addListener.call(this, listener);
+              } else {
+                var wrapper = wrappers.get(listener);
+                if (!wrapper) {
+                  wrapper = function(ev) { listener.handleEvent(ev); };
+                  wrappers.set(listener, wrapper);
+                }
+                proto.addListener.call(this, wrapper);
               }
-              
-              // requestIdleCallback
-              if (typeof requestIdleCallback !== 'function') {
-                  global.requestIdleCallback = function(cb) {
-                      return setTimeout(function() {
-                          cb({ didTimeout: false, timeRemaining: function() { return 50; } });
-                      }, 1);
-                  };
-                  global.cancelIdleCallback = function(id) { clearTimeout(id); };
+            };
+            proto.removeEventListener = proto.removeEventListener || function(type, listener) {
+              if (type !== "change") return;
+              if (typeof listener === "function") {
+                proto.removeListener.call(this, listener);
+              } else {
+                var wrapper = wrappers.get(listener);
+                if (!wrapper) return;
+                proto.removeListener.call(this, wrapper);
               }
-              
-              // reportError
-              if (typeof reportError !== 'function') {
-                  global.reportError = function(err) {
-                      setTimeout(function() { throw err; }, 0);
-                  };
-              }
-              
-              // CustomEvent
-              if (typeof CustomEvent !== 'function') {
-                  global.CustomEvent = function(type, options) {
-                      var ev = document.createEvent('CustomEvent');
-                      ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
-                      return ev;
-                  };
-              }
-              
-              // Element.scrollTo
-              if (!Element.prototype.scrollTo) {
-                  Element.prototype.scrollTo = function(x, y) {
-                      if (typeof x === 'object') {
-                          this.scrollLeft = x.left || 0;
-                          this.scrollTop = x.top || 0;
-                      } else {
-                          this.scrollLeft = x || 0;
-                          this.scrollTop = y || 0;
-                      }
-                  };
-              }
-              
-              // queueMicrotask
-              if (!global.queueMicrotask) {
-                  global.queueMicrotask = function(cb) { Promise.resolve().then(cb); };
-              }
-              
-              // Array/String at
-              if (!Array.prototype.at) {
-                  Array.prototype.at = function(idx) {
-                      var len = this.length;
-                      var i = idx >= 0 ? idx : len + idx;
-                      return (i < 0 || i >= len) ? undefined : this[i];
-                  };
-              }
-              if (!String.prototype.at) {
-                  String.prototype.at = function(idx) {
-                      var len = this.length;
-                      var i = idx >= 0 ? idx : len + idx;
-                      return (i < 0 || i >= len) ? undefined : this[i];
-                  };
-              }
-              
-              // Object.hasOwn
-              if (!Object.hasOwn) {
-                  Object.hasOwn = function(obj, prop) {
-                      return Object.prototype.hasOwnProperty.call(obj, prop);
-                  };
-              }
-              
-              // replaceAll
-              if (!String.prototype.replaceAll) {
-                  String.prototype.replaceAll = function(search, replacement) {
-                      if (typeof search === 'string') return this.split(search).join(replacement);
-                      if (search instanceof RegExp) {
-                          if (!search.global) throw new TypeError('Global RegExp required');
-                          return this.replace(search, replacement);
-                      }
-                      return this.replace(search, replacement);
-                  };
-              }
-              
-              // globalThis
-              if (typeof global.globalThis === 'undefined') global.globalThis = global;
-              
-              // Promise.allSettled
-              if (!Promise.allSettled) {
-                  Promise.allSettled = function(promises) {
-                      return Promise.all(promises.map(function(p) {
-                          return Promise.resolve(p).then(
-                              function(v) { return { status: 'fulfilled', value: v }; },
-                              function(r) { return { status: 'rejected', reason: r }; }
-                          );
-                      }));
-                  };
-              }
-              
-              // Promise.any
-              if (!Promise.any) {
-                  Promise.any = function(promises) {
-                      return new Promise(function(resolve, reject) {
-                          var errors = [];
-                          var pending = promises.length;
-                          if (pending === 0) {
-                              reject(new AggregateError([], 'All promises rejected'));
-                              return;
-                          }
-                          for (var i = 0; i < promises.length; i++) {
-                              Promise.resolve(promises[i]).then(resolve, function(err) {
-                                  errors[i] = err;
-                                  if (--pending === 0) reject(new AggregateError(errors, 'All promises rejected'));
-                              });
-                          }
-                      });
-                  };
-              }
-              
-              // AggregateError
-              if (typeof AggregateError === 'undefined') {
-                  global.AggregateError = function(errors, message) {
-                      var e = new Error(message);
-                      e.errors = errors;
-                      e.name = 'AggregateError';
-                      return e;
-                  };
-              }
-              
-              // Array flat/flatMap
-              if (!Array.prototype.flat) {
-                  Array.prototype.flat = function(depth) {
-                      var d = depth === undefined ? 1 : Math.floor(depth);
-                      if (d < 1) return Array.prototype.slice.call(this);
-                      return this.reduce(function(acc, val) {
-                          return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
-                      }, []);
-                  };
-              }
-              if (!Array.prototype.flatMap) {
-                  Array.prototype.flatMap = function(callback, thisArg) {
-                      return this.map(callback, thisArg).flat();
-                  };
-              }
-              
-              // Object.fromEntries
-              if (!Object.fromEntries) {
-                  Object.fromEntries = function(entries) {
-                      var obj = {};
-                      for (var i = 0; i < entries.length; i++) {
-                          obj[entries[i][0]] = entries[i][1];
-                      }
-                      return obj;
-                  };
-              }
-              
-              // matchAll
-              if (!String.prototype.matchAll) {
-                  String.prototype.matchAll = function(regexp) {
-                      var flags = regexp.flags;
-                      if (!flags.includes('g')) flags += 'g';
-                      var rx = new RegExp(regexp.source, flags);
-                      var matches = [];
-                      var match;
-                      while ((match = rx.exec(this)) !== null) matches.push(match);
-                      return matches[Symbol.iterator]();
-                  };
-              }
-              
-              // Array findLast/findLastIndex
-              if (!Array.prototype.findLast) {
-                  Array.prototype.findLast = function(predicate, thisArg) {
-                      for (var i = this.length - 1; i >= 0; i--) {
-                          if (predicate.call(thisArg, this[i], i, this)) return this[i];
-                      }
-                      return undefined;
-                  };
-                  Array.prototype.findLastIndex = function(predicate, thisArg) {
-                      for (var i = this.length - 1; i >= 0; i--) {
-                          if (predicate.call(thisArg, this[i], i, this)) return i;
-                      }
-                      return -1;
-                  };
-              }
-              
-              // toReversed, toSorted, toSpliced, with
-              if (!Array.prototype.toReversed) {
-                  Array.prototype.toReversed = function() { return this.slice().reverse(); };
-                  Array.prototype.toSorted = function(compareFn) { return this.slice().sort(compareFn); };
-                  Array.prototype.toSpliced = function(start, deleteCount) {
-                      var args = Array.prototype.slice.call(arguments);
-                      var copy = this.slice();
-                      copy.splice.apply(copy, args);
-                      return copy;
-                  };
-                  Array.prototype.with = function(index, value) {
-                      var copy = this.slice();
-                      copy[index] = value;
-                      return copy;
-                  };
-              }
-              
-              // WeakRef, FinalizationRegistry
-              if (typeof WeakRef === 'undefined') {
-                  global.WeakRef = function(value) { return { deref: function() { return value; } }; };
-                  global.FinalizationRegistry = function() {
-                      return { register: function() {}, unregister: function() {} };
-                  };
-              }
-              
-              // Promise.withResolvers
-              if (!Promise.withResolvers) {
-                  Promise.withResolvers = function() {
-                      var resolve, reject;
-                      var promise = new Promise(function(res, rej) {
-                          resolve = res;
-                          reject = rej;
-                      });
-                      return { promise: promise, resolve: resolve, reject: reject };
-                  };
-              }
-              
-              // Atomics.waitAsync
-              if (global.Atomics && !global.Atomics.waitAsync) {
-                  global.Atomics.waitAsync = function() { return Promise.reject(new Error('Not supported')); };
-              }
-              
-              // structuredClone fallback
-              if (typeof structuredClone !== 'function') {
-                  global.structuredClone = function(obj) {
-                      return JSON.parse(JSON.stringify(obj));
-                  };
-              }
-              
-              console.log('[Combined Polyfills] Complete iOS 26 compatibility layer loaded - 16 polyfills + fixes');
+            };
           })(window);
-          IOS15_FIXES
           
-          echo "Combined polyfills file created. Size: $(wc -c < patches/polyfills.js) bytes"
+          if (!window.queueMicrotask) {
+            window.queueMicrotask = function(callback) { Promise.resolve().then(callback); };
+          }
+          
+          if (!Promise.withResolvers) {
+            Promise.withResolvers = function() {
+              var resolve, reject;
+              var promise = new Promise(function(res, rej) { resolve = res; reject = rej; });
+              return { promise: promise, resolve: resolve, reject: reject };
+            };
+          }
+          
+          if (!Array.prototype.at) {
+            Array.prototype.at = function(index) {
+              var length = this.length;
+              var relativeIndex = index >= 0 ? index : length + index;
+              if (relativeIndex < 0 || relativeIndex >= length) return undefined;
+              return this[relativeIndex];
+            };
+          }
+          
+          if (!String.prototype.at) {
+            String.prototype.at = function(index) {
+              var length = this.length;
+              var relativeIndex = index >= 0 ? index : length + index;
+              if (relativeIndex < 0 || relativeIndex >= length) return undefined;
+              return this[relativeIndex];
+            };
+          }
+          
+          if (!Object.hasOwn) {
+            Object.hasOwn = function(obj, prop) {
+              return Object.prototype.hasOwnProperty.call(obj, prop);
+            };
+          }
+          
+          if (!Promise.any) {
+            Promise.any = function(promises) {
+              return new Promise(function(resolve, reject) {
+                var errors = [];
+                var pending = promises.length;
+                if (pending === 0) {
+                  reject(new AggregateError([], "All promises were rejected"));
+                  return;
+                }
+                for (var i = 0; i < promises.length; i++) {
+                  Promise.resolve(promises[i]).then(resolve, function(err) {
+                    errors[i] = err;
+                    pending--;
+                    if (pending === 0) {
+                      reject(new AggregateError(errors, "All promises were rejected"));
+                    }
+                  });
+                }
+              });
+            };
+          }
+          
+          if (!String.prototype.replaceAll) {
+            String.prototype.replaceAll = function(search, replacement) {
+              if (typeof search === "string") {
+                return this.split(search).join(replacement);
+              }
+              if (search instanceof RegExp) {
+                if (!search.global) {
+                  throw new TypeError("replaceAll must be called with a global RegExp");
+                }
+                return this.replace(search, replacement);
+              }
+              return this.replace(search, replacement);
+            };
+          }
+          
+          if (typeof AggregateError === "undefined") {
+            window.AggregateError = function AggregateError(errors, message) {
+              var e = new Error(message);
+              e.errors = errors;
+              e.name = "AggregateError";
+              return e;
+            };
+          }
+          POLYFILLS_EOF
 
       - name: Create loader.js
         run: |
           cat > patches/loader.js << 'LOADER_EOF'
           (function() {
-              var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
-              var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
-              console.log("[Loader] Active for iOS " + iosVersion);
-              
-              if (typeof window.LegacyTranspiler !== "undefined") {
-                  window.LegacyTranspiler.init({
-                      BASE_URL: window.location.origin,
-                      runScript: function(code) {
-                          try {
-                              var script = document.createElement("script");
-                              script.textContent = code;
-                              document.head.appendChild(script);
-                              script.remove();
-                          } catch(e) { console.error("[Loader] Script error:", e); }
-                      },
-                      target: { platform: "iOS", version: iosVersion },
-                      minify: true
-                  });
-                  console.log("[Loader] LegacyTranspiler initialized");
-              } else {
-                  console.warn("[Loader] LegacyTranspiler not found");
+            var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+            var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
+            
+            if (typeof window.LegacyTranspiler === "undefined") {
+              return;
+            }
+            
+            window.LegacyTranspiler.init({
+              BASE_URL: window.location.origin,
+              runScript: function(code) {
+                try {
+                  var script = document.createElement("script");
+                  script.textContent = code;
+                  document.documentElement.appendChild(script);
+                  script.remove();
+                } catch(e) {}
+              },
+              target: { platform: "iOS", version: iosVersion },
+              minify: true
+            });
+            
+            var processedScripts = new Set();
+            var observer = new MutationObserver(function(mutations) {
+              for (var i = 0; i < mutations.length; i++) {
+                var mutation = mutations[i];
+                for (var j = 0; j < mutation.addedNodes.length; j++) {
+                  var node = mutation.addedNodes[j];
+                  if (node.tagName === "SCRIPT" && node.src && !processedScripts.has(node.src)) {
+                    processedScripts.add(node.src);
+                    node.type = "javascript/blocked";
+                    window.LegacyTranspiler.loadCode(node.src);
+                  }
+                  if (node.tagName === "SCRIPT" && !node.src && node.textContent && node.type !== "javascript/blocked") {
+                    var content = node.textContent;
+                    if (/(\?\?=?|&&=?|\|\|=?|class\s+\w+\s*\{|\#\w+|\basync\b|import\s*\()/g.test(content)) {
+                      node.type = "javascript/blocked";
+                      try {
+                        var transpiled = window.LegacyTranspiler.transpile("inline.js", content);
+                        var newScript = document.createElement("script");
+                        newScript.textContent = transpiled;
+                        node.parentNode.replaceChild(newScript, node);
+                      } catch(e) {}
+                    }
+                  }
+                }
               }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
           })();
           LOADER_EOF
 
-      - name: Verify legacy-transpiler.js exists
+      - name: Create enhanced polyfills for arena.ai (full modern Web APIs)
+        run: |
+          cat > patches/legacy-transpiler-enhanced.js << 'ENHANCED_EOF'
+          // Enhanced polyfills for iOS 15 – adds modern Web APIs (fetch, streams, web‑animations, etc.)
+          (function(global) {
+              'use strict';
+              
+              // ---- fetch with Headers/Request/Response ----
+              if (!global.fetch) {
+                  (function() {
+                      function Headers(init) {
+                          this._map = new Map();
+                          if (init) {
+                              if (init instanceof Headers) init.forEach((v,k)=>this.append(k,v));
+                              else if (Array.isArray(init)) init.forEach(([k,v])=>this.append(k,v));
+                              else Object.keys(init).forEach(k=>this.append(k,init[k]));
+                          }
+                      }
+                      Headers.prototype.append = function(k,v) { this._map.set(k.toLowerCase(), v); };
+                      Headers.prototype.delete = function(k) { this._map.delete(k.toLowerCase()); };
+                      Headers.prototype.get = function(k) { return this._map.get(k.toLowerCase()) || null; };
+                      Headers.prototype.has = function(k) { return this._map.has(k.toLowerCase()); };
+                      Headers.prototype.set = function(k,v) { this._map.set(k.toLowerCase(), v); };
+                      Headers.prototype.forEach = function(cb) { this._map.forEach((v,k)=>cb(v,k,this)); };
+                      global.Headers = Headers;
+          
+                      function Request(input, init) {
+                          this.url = typeof input === 'string' ? input : input.url;
+                          this.method = (init && init.method) || 'GET';
+                          this.headers = new Headers(init && init.headers);
+                          this.body = init && init.body;
+                      }
+                      global.Request = Request;
+          
+                      function Response(body, init) {
+                          this.status = (init && init.status) || 200;
+                          this.statusText = (init && init.statusText) || '';
+                          this.headers = new Headers(init && init.headers);
+                          this.body = body;
+                          this.ok = this.status >= 200 && this.status < 300;
+                      }
+                      global.Response = Response;
+          
+                      global.fetch = function(url, options) {
+                          return new Promise(function(resolve, reject) {
+                              var xhr = new XMLHttpRequest();
+                              xhr.open(options && options.method || 'GET', url);
+                              if (options && options.headers) {
+                                  var headers = new Headers(options.headers);
+                                  headers.forEach(function(v,k) { xhr.setRequestHeader(k, v); });
+                              }
+                              xhr.onload = function() {
+                                  resolve(new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText }));
+                              };
+                              xhr.onerror = function() { reject(new TypeError('Network request failed')); };
+                              xhr.send(options && options.body);
+                          });
+                      };
+                  })();
+              }
+          
+              // ---- AbortController ----
+              if (typeof AbortController === 'undefined') {
+                  function AbortSignal() {
+                      this.aborted = false;
+                      this._listeners = [];
+                  }
+                  AbortSignal.prototype.addEventListener = function(type, listener) {
+                      if (type === 'abort') this._listeners.push(listener);
+                  };
+                  AbortSignal.prototype.removeEventListener = function(type, listener) {
+                      this._listeners = this._listeners.filter(l => l !== listener);
+                  };
+                  AbortSignal.prototype.dispatchEvent = function() {
+                      this.aborted = true;
+                      this._listeners.forEach(l => l());
+                  };
+                  global.AbortSignal = AbortSignal;
+                  global.AbortController = function() {
+                      this.signal = new AbortSignal();
+                      this.abort = function() { this.signal.dispatchEvent(); };
+                  };
+              }
+          
+              // ---- URLPattern ----
+              if (typeof URLPattern === 'undefined') {
+                  global.URLPattern = function() {
+                      this.test = function() { return false; };
+                      this.exec = function() { return null; };
+                  };
+              }
+          
+              // ---- IntersectionObserver ----
+              if (typeof IntersectionObserver === 'undefined') {
+                  global.IntersectionObserver = function(callback) {
+                      this.observe = function(el) {
+                          setTimeout(function() {
+                              callback([{ target: el, isIntersecting: true, intersectionRatio: 1 }]);
+                          }, 0);
+                      };
+                      this.unobserve = function() {};
+                      this.disconnect = function() {};
+                  };
+              }
+          
+              // ---- ResizeObserver ----
+              if (typeof ResizeObserver === 'undefined') {
+                  global.ResizeObserver = function(callback) {
+                      this.observe = function(el) {
+                          setTimeout(function() {
+                              callback([{ target: el, contentRect: el.getBoundingClientRect() }]);
+                          }, 0);
+                      };
+                      this.unobserve = function() {};
+                      this.disconnect = function() {};
+                  };
+              }
+          
+              // ---- Web Streams (ReadableStream, etc.) ----
+              if (typeof ReadableStream === 'undefined') {
+                  global.ReadableStream = function() {
+                      this.getReader = function() {
+                          return { read: function() { return Promise.resolve({ done: true, value: undefined }); } };
+                      };
+                  };
+                  global.WritableStream = function() {
+                      this.getWriter = function() {
+                          return { write: function() {}, close: function() {} };
+                      };
+                  };
+                  global.TransformStream = function() {
+                      this.readable = new ReadableStream();
+                      this.writable = new WritableStream();
+                  };
+              }
+          
+              // ---- Web Animations API (stub) ----
+              if (!Element.prototype.animate) {
+                  Element.prototype.animate = function(keyframes, options) {
+                      return {
+                          finished: Promise.resolve(),
+                          play: function() {},
+                          pause: function() {},
+                          cancel: function() {},
+                          addEventListener: function() {},
+                          removeEventListener: function() {}
+                      };
+                  };
+              }
+          
+              // ---- structuredClone ----
+              if (typeof structuredClone !== 'function') {
+                  global.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); };
+              }
+          
+              // ---- BroadcastChannel ----
+              if (typeof BroadcastChannel === 'undefined') {
+                  if (!global.__bcChannels) global.__bcChannels = {};
+                  global.BroadcastChannel = function(name) {
+                      this.name = name;
+                      this._listeners = [];
+                      if (!global.__bcChannels[name]) global.__bcChannels[name] = [];
+                      global.__bcChannels[name].push(this);
+                  };
+                  global.BroadcastChannel.prototype.postMessage = function(msg) {
+                      var channels = global.__bcChannels[this.name] || [];
+                      for (var i = 0; i < channels.length; i++) {
+                          if (channels[i] !== this) {
+                              channels[i]._listeners.forEach(l => l({ data: msg }));
+                          }
+                      }
+                  };
+                  global.BroadcastChannel.prototype.addEventListener = function(type, listener) {
+                      if (type === 'message') this._listeners.push(listener);
+                  };
+                  global.BroadcastChannel.prototype.removeEventListener = function(type, listener) {
+                      this._listeners = this._listeners.filter(l => l !== listener);
+                  };
+                  global.BroadcastChannel.prototype.close = function() {
+                      var arr = global.__bcChannels[this.name];
+                      if (arr) global.__bcChannels[this.name] = arr.filter(ch => ch !== this);
+                  };
+              }
+          
+              // ---- MediaSource (stub for video streaming) ----
+              if (typeof MediaSource === 'undefined') {
+                  global.MediaSource = function() {
+                      this.readyState = 'closed';
+                      this.addSourceBuffer = function() { return {}; };
+                      this.removeSourceBuffer = function() {};
+                      this.endOfStream = function() {};
+                  };
+              }
+          
+              // ---- Additional ES2022+ array methods ----
+              if (!Array.prototype.findLast) {
+                  Array.prototype.findLast = function(pred, thisArg) {
+                      for (var i = this.length-1; i >= 0; i--)
+                          if (pred.call(thisArg, this[i], i, this)) return this[i];
+                      return undefined;
+                  };
+                  Array.prototype.findLastIndex = function(pred, thisArg) {
+                      for (var i = this.length-1; i >= 0; i--)
+                          if (pred.call(thisArg, this[i], i, this)) return i;
+                      return -1;
+                  };
+              }
+              if (!Array.prototype.toReversed) Array.prototype.toReversed = function() { return this.slice().reverse(); };
+              if (!Array.prototype.toSorted) Array.prototype.toSorted = function(cmp) { return this.slice().sort(cmp); };
+              if (!Array.prototype.toSpliced) {
+                  Array.prototype.toSpliced = function(start, deleteCount, ...items) {
+                      var copy = this.slice();
+                      copy.splice(start, deleteCount, ...items);
+                      return copy;
+                  };
+              }
+              if (!Array.prototype.with) Array.prototype.with = function(idx, val) { var copy = this.slice(); copy[idx] = val; return copy; };
+          
+              console.log('[Enhanced] Modern Web APIs loaded for arena.ai');
+          })(window);
+          ENHANCED_EOF
+
+      - name: Verify legacy-transpiler.js exists (your 274KB file)
         run: |
           if [ ! -f patches/legacy-transpiler.js ]; then
             echo "ERROR: patches/legacy-transpiler.js not found!"
-            echo "You MUST upload your 274KB legacy-transpiler.js to the patches/ folder"
+            echo "You MUST upload your 274KB legacy-transpiler.js file to the patches/ folder"
             exit 1
           fi
           echo "legacy-transpiler.js found. Size: $(wc -c < patches/legacy-transpiler.js) bytes"
 
-      - name: Create app bundle and copy JS files
+      - name: Create app bundle and copy all JS files
         run: |
           APP_NAME="Modernize"
           mkdir -p Payload/${APP_NAME}.app
           cp patches/polyfills.js Payload/${APP_NAME}.app/
+          cp patches/legacy-transpiler-enhanced.js Payload/${APP_NAME}.app/
           cp patches/legacy-transpiler.js Payload/${APP_NAME}.app/
           cp patches/loader.js Payload/${APP_NAME}.app/
           echo "JS files copied:"
           ls -la Payload/${APP_NAME}.app/*.js
 
-      - name: Generate Swift source (no full screen, transparent aero toolbar)
+      - name: Generate Swift source (full UI, no full-screen swipe, loads 4 JS files)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -484,39 +441,21 @@ jobs:
           import AVFoundation
 
           // MARK: - Data Models
-          struct Bookmark: Codable {
-              var id = UUID()
-              var title: String
-              var url: String
-              var dateAdded: Date
-          }
-          
-          struct HistoryEntry: Codable {
-              var id = UUID()
-              var title: String
-              var url: String
-              var date: Date
-          }
-          
-          struct TabState: Codable {
-              var id = UUID()
-              var title: String
-              var url: String
-              var isPrivate: Bool
-          }
-          
-          // MARK: - Managers
+          struct Bookmark: Codable { var id = UUID(); var title: String; var url: String; var dateAdded: Date }
+          struct HistoryEntry: Codable { var id = UUID(); var title: String; var url: String; var date: Date }
+          struct TabState: Codable { var id = UUID(); var title: String; var url: String; var isPrivate: Bool }
+
+          // MARK: - Managers (UserAgent, History, Bookmark, Download)
           class UserAgentManager {
               static let shared = UserAgentManager()
               private let defaults = UserDefaults.standard
-              
               enum UAMode: Int, CaseIterable {
                   case ios26 = 0, ios15 = 1, googleFix = 2, custom = 3
                   var displayName: String {
                       switch self {
-                      case .ios26: return "iOS 26 (Modern)"
-                      case .ios15: return "iOS 15 (Default)"
-                      case .googleFix: return "Google Account Fix"
+                      case .ios26: return "iOS 26"
+                      case .ios15: return "iOS 15"
+                      case .googleFix: return "Google Fix"
                       case .custom: return "Custom"
                       }
                   }
@@ -533,7 +472,6 @@ jobs:
                       }
                   }
               }
-              
               var currentMode: UAMode {
                   get { return UAMode(rawValue: defaults.integer(forKey: "ua_mode")) ?? .ios26 }
                   set { defaults.set(newValue.rawValue, forKey: "ua_mode") }
@@ -542,88 +480,70 @@ jobs:
                   get { return defaults.string(forKey: "custom_ua") ?? "" }
                   set { defaults.set(newValue, forKey: "custom_ua") }
               }
-              
               func userAgentForURL(_ url: URL?) -> String {
                   guard let host = url?.host?.lowercased() else { return currentMode.userAgentString }
-                  if host.contains("accounts.google.com") {
-                      return UAMode.googleFix.userAgentString
-                  }
+                  if host.contains("accounts.google.com") { return UAMode.googleFix.userAgentString }
                   if currentMode == .custom {
                       return customUA.isEmpty ? UAMode.ios26.userAgentString : customUA
                   }
                   return currentMode.userAgentString
               }
           }
-          
+
           class HistoryManager {
               static let shared = HistoryManager()
               private let defaults = UserDefaults.standard
               private let key = "browser_history"
-              
               var history: [HistoryEntry] {
                   get {
                       guard let data = defaults.data(forKey: key),
-                            let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) else {
-                          return []
-                      }
+                            let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return [] }
                       return entries
                   }
                   set {
                       let filtered = Array(newValue.prefix(500))
-                      if let data = try? JSONEncoder().encode(filtered) {
-                          defaults.set(data, forKey: key)
-                      }
+                      if let data = try? JSONEncoder().encode(filtered) { defaults.set(data, forKey: key) }
                   }
               }
-              
               func addEntry(title: String, url: String) {
                   var current = history
                   current.removeAll { $0.url == url }
                   current.insert(HistoryEntry(title: title, url: url, date: Date()), at: 0)
                   history = current
               }
-              
               func clear() { history = [] }
           }
-          
+
           class BookmarkManager {
               static let shared = BookmarkManager()
               private let defaults = UserDefaults.standard
               private let key = "browser_bookmarks"
-              
               var bookmarks: [Bookmark] {
                   get {
                       guard let data = defaults.data(forKey: key),
-                            let items = try? JSONDecoder().decode([Bookmark].self, from: data) else {
-                          return []
-                      }
+                            let items = try? JSONDecoder().decode([Bookmark].self, from: data) else { return [] }
                       return items
                   }
                   set {
-                      if let data = try? JSONEncoder().encode(newValue) {
-                          defaults.set(data, forKey: key)
-                      }
+                      if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: key) }
                   }
               }
-              
               func add(title: String, url: String) {
                   var current = bookmarks
                   current.removeAll { $0.url == url }
                   current.insert(Bookmark(title: title, url: url, dateAdded: Date()), at: 0)
                   bookmarks = current
               }
-              
               func remove(at index: Int) {
                   var current = bookmarks
                   current.remove(at: index)
                   bookmarks = current
               }
           }
-          
+
           class DownloadManager: NSObject, WKDownloadDelegate {
               static let shared = DownloadManager()
               private override init() { super.init(); createFolder() }
-              
               private func createFolder() {
                   let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
                   let folder = docs.appendingPathComponent("Modernize")
@@ -631,39 +551,30 @@ jobs:
                       try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                   }
               }
-              
               private func folder() -> URL {
                   return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("Modernize")
               }
-              
               @available(iOS 15.0, *)
               func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
                   return folder().appendingPathComponent(suggestedFilename)
               }
-              
               func downloadDidFinish(_ download: WKDownload) { }
               func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) { }
           }
-          
+
           // MARK: - Tab Manager
           class TabManager {
               static let shared = TabManager()
               private init() {}
-              
               var tabs: [TabState] = []
               var privateTabs: [TabState] = []
               var privateMode: Bool = false
               var currentTabIndex: Int = 0
-              
-              var currentTabs: [TabState] {
-                  return privateMode ? privateTabs : tabs
-              }
-              
+              var currentTabs: [TabState] { return privateMode ? privateTabs : tabs }
               var currentTab: TabState? {
                   guard currentTabIndex < currentTabs.count else { return nil }
                   return currentTabs[currentTabIndex]
               }
-              
               func addTab(url: String? = nil, title: String = "New Tab", isPrivate: Bool = false) {
                   let newTab = TabState(id: UUID(), title: title, url: url ?? "https://www.google.com", isPrivate: isPrivate)
                   if isPrivate {
@@ -674,7 +585,6 @@ jobs:
                       currentTabIndex = tabs.count - 1
                   }
               }
-              
               func updateCurrentTab(title: String, url: String) {
                   guard currentTabIndex < currentTabs.count else { return }
                   if privateMode {
@@ -685,149 +595,106 @@ jobs:
                       tabs[currentTabIndex].url = url
                   }
               }
-              
               func closeTab(at index: Int) {
                   if privateMode {
                       privateTabs.remove(at: index)
-                      if privateTabs.isEmpty {
-                          addTab(isPrivate: true)
-                      }
-                      if currentTabIndex >= privateTabs.count {
-                          currentTabIndex = privateTabs.count - 1
-                      }
+                      if privateTabs.isEmpty { addTab(isPrivate: true) }
+                      if currentTabIndex >= privateTabs.count { currentTabIndex = privateTabs.count - 1 }
                   } else {
                       tabs.remove(at: index)
-                      if tabs.isEmpty {
-                          addTab()
-                      }
-                      if currentTabIndex >= tabs.count {
-                          currentTabIndex = tabs.count - 1
-                      }
+                      if tabs.isEmpty { addTab() }
+                      if currentTabIndex >= tabs.count { currentTabIndex = tabs.count - 1 }
                   }
               }
-              
               func closeAllTabs() {
-                  if privateMode {
-                      privateTabs.removeAll()
-                      addTab(isPrivate: true)
-                  } else {
-                      tabs.removeAll()
-                      addTab()
-                  }
+                  if privateMode { privateTabs.removeAll(); addTab(isPrivate: true) }
+                  else { tabs.removeAll(); addTab() }
                   currentTabIndex = 0
               }
           }
-          
-          // MARK: - Main Browser ViewController (No full screen swipe, transparent toolbar)
+
+          // MARK: - Main BrowserViewController
           class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate {
-              
               var webView: WKWebView!
               var urlTextField: UITextField!
-              var backButton: UIButton!
-              var forwardButton: UIButton!
-              var reloadButton: UIButton!
-              var tabsButton: UIButton!
-              var menuButton: UIButton!
+              var backButton, forwardButton, reloadButton, tabsButton, menuButton: UIButton!
               var progressView: UIProgressView!
               var bottomToolbar: UIVisualEffectView!
               var bottomConstraint: NSLayoutConstraint!
               var statusBarStyle = false
-              
+
               override var preferredStatusBarStyle: UIStatusBarStyle {
                   return statusBarStyle ? .lightContent : .darkContent
               }
-              
+
               override func viewDidLoad() {
                   super.viewDidLoad()
                   view.backgroundColor = UIColor.white
-                  
                   AVCaptureDevice.requestAccess(for: .audio) { _ in }
                   setupWebView()
                   setupUI()
                   setupKeyboardHandling()
-                  
-                  if TabManager.shared.tabs.isEmpty {
-                      TabManager.shared.addTab()
-                  }
+                  if TabManager.shared.tabs.isEmpty { TabManager.shared.addTab() }
                   loadCurrentTab()
               }
-              
+
               func setupWebView() {
                   let config = WKWebViewConfiguration()
                   config.userContentController.add(self, name: "themeHandler")
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
-                  
+
                   let bundle = Bundle.main
-                  let jsFiles = ["polyfills", "legacy-transpiler", "loader"]
+                  // Load 4 JS files in correct order: polyfills → enhanced → legacy → loader
+                  let jsFiles = ["polyfills", "legacy-transpiler-enhanced", "legacy-transpiler", "loader"]
                   for file in jsFiles {
                       if let path = bundle.path(forResource: file, ofType: "js"),
                          let js = try? String(contentsOfFile: path, encoding: .utf8) {
                           config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
                           print("Loaded: \(file).js")
+                      } else {
+                          print("⚠️ Missing: \(file).js")
                       }
                   }
-                  
-                  // Dynamic status bar theme detection
+
                   let themeJS = """
                   (function() {
-                      var lastSentColor = null;
-                      var retryCount = 0;
-                      var maxRetries = 30;
-                      
+                      var lastSentColor = null, retryCount = 0, maxRetries = 30;
                       function rgbToHex(rgb) {
                           var match = rgb.match(/rgba?\\s*\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/i);
-                          if (match) {
-                              return match[1] + ',' + match[2] + ',' + match[3];
-                          }
-                          return null;
+                          return match ? match[1]+','+match[2]+','+match[3] : null;
                       }
-                      
                       function getTopColor() {
-                          var selectors = ['header', 'nav', '.header', '.navbar', '.app-header', '.top-bar', '.toolbar', '[class*="header"]', '[role="banner"]'];
-                          for (var i = 0; i < selectors.length; i++) {
-                              var elements = document.querySelectorAll(selectors[i]);
-                              for (var j = 0; j < elements.length; j++) {
-                                  var el = elements[j];
-                                  var rect = el.getBoundingClientRect();
+                          var selectors = ['header','nav','.header','.navbar','.app-header','.top-bar','.toolbar','[class*="header"]','[role="banner"]'];
+                          for (var i=0;i<selectors.length;i++) {
+                              var els = document.querySelectorAll(selectors[i]);
+                              for (var j=0;j<els.length;j++) {
+                                  var el = els[j], rect = el.getBoundingClientRect();
                                   if (rect.top <= 10 && rect.height > 15) {
-                                      var color = getComputedStyle(el).backgroundColor;
-                                      var hex = rgbToHex(color);
-                                      if (hex && color !== 'rgba(0,0,0,0)' && color !== 'transparent') {
-                                          return hex;
-                                      }
+                                      var c = getComputedStyle(el).backgroundColor, hex = rgbToHex(c);
+                                      if (hex && c !== 'rgba(0,0,0,0)' && c !== 'transparent') return hex;
                                   }
                               }
                           }
-                          var bodyColor = getComputedStyle(document.body).backgroundColor;
-                          var bodyHex = rgbToHex(bodyColor);
-                          if (bodyHex && bodyColor !== 'rgba(0,0,0,0)') {
-                              return bodyHex;
-                          }
-                          return null;
+                          var bodyC = getComputedStyle(document.body).backgroundColor, bodyHex = rgbToHex(bodyC);
+                          return (bodyHex && bodyC !== 'rgba(0,0,0,0)') ? bodyHex : null;
                       }
-                      
                       function sendColor() {
                           var color = getTopColor();
                           if (color && color !== lastSentColor) {
                               lastSentColor = color;
                               window.webkit.messageHandlers.themeHandler.postMessage(color);
                               retryCount = 0;
-                          } else if (!color && retryCount < maxRetries) {
-                              retryCount++;
-                          }
+                          } else if (!color && retryCount < maxRetries) retryCount++;
                       }
-                      
                       sendColor();
                       setInterval(sendColor, 500);
-                      var observer = new MutationObserver(function() { sendColor(); });
-                      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['style', 'class'] });
+                      var obs = new MutationObserver(sendColor);
+                      obs.observe(document.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['style','class'] });
                   })();
                   """
-                  
-                  let themeScript = WKUserScript(source: themeJS, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
-                  config.userContentController.addUserScript(themeScript)
-                  
+                  config.userContentController.addUserScript(WKUserScript(source: themeJS, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
+
                   webView = WKWebView(frame: .zero, configuration: config)
                   webView.translatesAutoresizingMaskIntoConstraints = false
                   webView.navigationDelegate = self
@@ -835,36 +702,34 @@ jobs:
                   webView.allowsBackForwardNavigationGestures = true
                   webView.backgroundColor = UIColor.white
                   view.addSubview(webView)
-                  
+
                   NSLayoutConstraint.activate([
                       webView.topAnchor.constraint(equalTo: view.topAnchor),
                       webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                       webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                       webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
                   ])
-                  
+
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.url), options: .new, context: nil)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack), options: .new, context: nil)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoForward), options: .new, context: nil)
               }
-              
+
               func loadCurrentTab() {
                   guard let urlString = TabManager.shared.currentTab?.url,
                         let url = URL(string: urlString) else { return }
-                  
                   webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
                   webView.load(URLRequest(url: url))
                   urlTextField.text = url.absoluteString
               }
-              
+
               func setupUI() {
                   progressView = UIProgressView(progressViewStyle: .bar)
                   progressView.translatesAutoresizingMaskIntoConstraints = false
                   progressView.progressTintColor = UIColor.systemBlue
                   view.addSubview(progressView)
-                  
-                  // Transparent aero toolbar
+
                   let blur = UIBlurEffect(style: .systemChromeMaterial)
                   bottomToolbar = UIVisualEffectView(effect: blur)
                   bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
@@ -872,7 +737,7 @@ jobs:
                   bottomToolbar.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
                   bottomToolbar.clipsToBounds = true
                   view.addSubview(bottomToolbar)
-                  
+
                   urlTextField = UITextField()
                   urlTextField.translatesAutoresizingMaskIntoConstraints = false
                   urlTextField.placeholder = "Search or enter URL"
@@ -885,7 +750,7 @@ jobs:
                   urlTextField.delegate = self
                   urlTextField.clearButtonMode = .whileEditing
                   bottomToolbar.contentView.addSubview(urlTextField)
-                  
+
                   let buttonStack = UIStackView()
                   buttonStack.translatesAutoresizingMaskIntoConstraints = false
                   buttonStack.axis = .horizontal
@@ -893,7 +758,7 @@ jobs:
                   buttonStack.alignment = .center
                   buttonStack.spacing = 16
                   bottomToolbar.contentView.addSubview(buttonStack)
-                  
+
                   func btn(_ name: String, _ action: Selector) -> UIButton {
                       let b = UIButton(type: .system)
                       b.setImage(UIImage(systemName: name), for: .normal)
@@ -901,170 +766,136 @@ jobs:
                       b.tintColor = UIColor.label
                       return b
                   }
-                  
                   backButton = btn("chevron.left", #selector(goBack))
                   forwardButton = btn("chevron.right", #selector(goForward))
                   reloadButton = btn("arrow.clockwise", #selector(reload))
                   tabsButton = btn("square.on.square", #selector(showTabSwitcher))
                   menuButton = btn("ellipsis", #selector(showMenu))
-                  
+
                   buttonStack.addArrangedSubview(backButton)
                   buttonStack.addArrangedSubview(forwardButton)
                   buttonStack.addArrangedSubview(reloadButton)
                   buttonStack.addArrangedSubview(tabsButton)
                   buttonStack.addArrangedSubview(menuButton)
-                  
+
                   NSLayoutConstraint.activate([
                       progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
                       progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                       progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                       progressView.heightAnchor.constraint(equalToConstant: 2),
-                      
+
                       bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                       bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                       bottomToolbar.heightAnchor.constraint(equalToConstant: 100),
-                      
+
                       buttonStack.leadingAnchor.constraint(equalTo: bottomToolbar.contentView.leadingAnchor, constant: 12),
                       buttonStack.trailingAnchor.constraint(equalTo: bottomToolbar.contentView.trailingAnchor, constant: -12),
                       buttonStack.topAnchor.constraint(equalTo: bottomToolbar.contentView.topAnchor, constant: 8),
                       buttonStack.heightAnchor.constraint(equalToConstant: 44),
-                      
+
                       urlTextField.topAnchor.constraint(equalTo: buttonStack.bottomAnchor, constant: 4),
                       urlTextField.leadingAnchor.constraint(equalTo: bottomToolbar.contentView.leadingAnchor, constant: 16),
                       urlTextField.trailingAnchor.constraint(equalTo: bottomToolbar.contentView.trailingAnchor, constant: -16),
                       urlTextField.heightAnchor.constraint(equalToConstant: 40),
                       urlTextField.bottomAnchor.constraint(equalTo: bottomToolbar.contentView.bottomAnchor, constant: -8)
                   ])
-                  
+
                   bottomConstraint = bottomToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
                   bottomConstraint.isActive = true
               }
-              
+
               func setupKeyboardHandling() {
                   NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
                   NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
-                  
                   let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
                   tap.cancelsTouchesInView = false
                   webView.addGestureRecognizer(tap)
               }
-              
-              @objc func keyboardWillShow(_ notification: Notification) {
-                  guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-                  let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
-                  
-                  UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
-                      self.bottomConstraint.constant = -keyboardFrame.height + self.view.safeAreaInsets.bottom
+
+              @objc func keyboardWillShow(_ n: Notification) {
+                  guard let frame = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                  let dur = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                  let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+                  UIView.animate(withDuration: dur, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+                      self.bottomConstraint.constant = -frame.height + self.view.safeAreaInsets.bottom
                       self.view.layoutIfNeeded()
                   }
               }
-              
-              @objc func keyboardWillHide(_ notification: Notification) {
-                  let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-                  let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
-                  
-                  UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+
+              @objc func keyboardWillHide(_ n: Notification) {
+                  let dur = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                  let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+                  UIView.animate(withDuration: dur, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
                       self.bottomConstraint.constant = 0
                       self.view.layoutIfNeeded()
                   }
               }
-              
+
               @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
-              
+
               func loadURL(_ url: URL) {
                   webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
                   webView.load(URLRequest(url: url))
                   urlTextField.text = url.absoluteString
               }
-              
+
               func loadSearch(_ query: String) {
-                  let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-                  if let url = URL(string: "https://www.google.com/search?q=\(encoded)") {
-                      loadURL(url)
-                  }
+                  let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+                  if let url = URL(string: "https://www.google.com/search?q=\(enc)") { loadURL(url) }
               }
-              
+
               @objc func goBack() { webView.goBack() }
               @objc func goForward() { webView.goForward() }
               @objc func reload() { webView.reload() }
-              
+
               @objc func showTabSwitcher() {
-                  let alert = UIAlertController(title: "Tabs", message: "\(TabManager.shared.currentTabs.count) open tabs", preferredStyle: .actionSheet)
-                  
+                  let alert = UIAlertController(title: "Tabs", message: nil, preferredStyle: .actionSheet)
                   for (i, tab) in TabManager.shared.currentTabs.enumerated() {
-                      alert.addAction(UIAlertAction(title: "\(i+1). \(tab.title.prefix(50))", style: .default) { _ in
+                      alert.addAction(UIAlertAction(title: "\(i+1). \(tab.title)", style: .default) { _ in
                           TabManager.shared.currentTabIndex = i
                           self.loadCurrentTab()
                       })
                   }
-                  
                   alert.addAction(UIAlertAction(title: "New Tab", style: .default) { _ in
                       TabManager.shared.addTab()
                       self.loadCurrentTab()
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Private Mode: \(TabManager.shared.privateMode ? "ON" : "OFF")", style: .default) { _ in
                       TabManager.shared.privateMode.toggle()
                       TabManager.shared.currentTabIndex = 0
-                      if TabManager.shared.currentTabs.isEmpty {
-                          TabManager.shared.addTab(isPrivate: TabManager.shared.privateMode)
-                      }
+                      if TabManager.shared.currentTabs.isEmpty { TabManager.shared.addTab(isPrivate: TabManager.shared.privateMode) }
                       self.loadCurrentTab()
                       self.tabsButton.setImage(UIImage(systemName: TabManager.shared.privateMode ? "lock.fill" : "square.on.square"), for: .normal)
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Close Current Tab", style: .destructive) { _ in
                       TabManager.shared.closeTab(at: TabManager.shared.currentTabIndex)
                       self.loadCurrentTab()
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Close All Tabs", style: .destructive) { _ in
                       TabManager.shared.closeAllTabs()
                       self.loadCurrentTab()
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                  
-                  if let popover = alert.popoverPresentationController {
-                      popover.sourceView = tabsButton
-                      popover.sourceRect = tabsButton.bounds
-                  }
+                  if let popover = alert.popoverPresentationController { popover.sourceView = tabsButton; popover.sourceRect = tabsButton.bounds }
                   present(alert, animated: true)
               }
-              
+
               @objc func showMenu() {
                   let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-                  
                   let uaMenu = UIAlertController(title: "User Agent", message: nil, preferredStyle: .actionSheet)
                   for mode in UserAgentManager.UAMode.allCases {
                       let isCurrent = UserAgentManager.shared.currentMode == mode
                       uaMenu.addAction(UIAlertAction(title: mode.displayName + (isCurrent ? " ✓" : ""), style: .default) { _ in
                           UserAgentManager.shared.currentMode = mode
-                          if mode == .custom {
-                              self.promptForCustomUA()
-                          } else {
-                              self.webView.reload()
-                          }
+                          if mode == .custom { self.promptForCustomUA() } else { self.webView.reload() }
                       })
                   }
                   uaMenu.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                  alert.addAction(UIAlertAction(title: "User Agent", style: .default) { _ in
-                      self.present(uaMenu, animated: true)
-                  })
-                  
-                  alert.addAction(UIAlertAction(title: "Bookmarks", style: .default) { _ in
-                      self.showBookmarks()
-                  })
-                  
-                  alert.addAction(UIAlertAction(title: "History", style: .default) { _ in
-                      self.showHistory()
-                  })
-                  
-                  alert.addAction(UIAlertAction(title: "Downloads", style: .default) { _ in
-                      self.showDownloads()
-                  })
-                  
+                  alert.addAction(UIAlertAction(title: "User Agent", style: .default) { _ in self.present(uaMenu, animated: true) })
+
+                  alert.addAction(UIAlertAction(title: "Bookmarks", style: .default) { _ in self.showBookmarks() })
+                  alert.addAction(UIAlertAction(title: "History", style: .default) { _ in self.showHistory() })
+                  alert.addAction(UIAlertAction(title: "Downloads", style: .default) { _ in self.showDownloads() })
                   alert.addAction(UIAlertAction(title: "Add to Bookmarks", style: .default) { _ in
                       if let url = self.webView.url?.absoluteString, let title = self.webView.title {
                           BookmarkManager.shared.add(title: title, url: url)
@@ -1073,40 +904,32 @@ jobs:
                           self.present(confirm, animated: true)
                       }
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Share", style: .default) { _ in
                       if let url = self.webView.url {
                           let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
                           self.present(activity, animated: true)
                       }
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Clear History", style: .destructive) { _ in
                       HistoryManager.shared.clear()
                       let confirm = UIAlertController(title: "Cleared", message: "History cleared", preferredStyle: .alert)
                       confirm.addAction(UIAlertAction(title: "OK", style: .default))
                       self.present(confirm, animated: true)
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Clear Bookmarks", style: .destructive) { _ in
                       BookmarkManager.shared.bookmarks = []
                       let confirm = UIAlertController(title: "Cleared", message: "Bookmarks cleared", preferredStyle: .alert)
                       confirm.addAction(UIAlertAction(title: "OK", style: .default))
                       self.present(confirm, animated: true)
                   })
-                  
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                  
-                  if let popover = alert.popoverPresentationController {
-                      popover.sourceView = menuButton
-                      popover.sourceRect = menuButton.bounds
-                  }
+                  if let popover = alert.popoverPresentationController { popover.sourceView = menuButton; popover.sourceRect = menuButton.bounds }
                   present(alert, animated: true)
               }
-              
+
               func promptForCustomUA() {
-                  let alert = UIAlertController(title: "Custom User Agent", message: "Enter your custom UA string", preferredStyle: .alert)
-                  alert.addTextField { $0.placeholder = "User Agent String" }
+                  let alert = UIAlertController(title: "Custom UA", message: "Enter user agent string", preferredStyle: .alert)
+                  alert.addTextField { $0.placeholder = "User Agent" }
                   alert.addAction(UIAlertAction(title: "Save", style: .default) { _ in
                       if let text = alert.textFields?.first?.text, !text.isEmpty {
                           UserAgentManager.shared.customUA = text
@@ -1116,12 +939,12 @@ jobs:
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                   present(alert, animated: true)
               }
-              
+
               func showBookmarks() {
                   let alert = UIAlertController(title: "Bookmarks", message: nil, preferredStyle: .actionSheet)
-                  for (i, bookmark) in BookmarkManager.shared.bookmarks.enumerated() {
-                      alert.addAction(UIAlertAction(title: bookmark.title, style: .default) { _ in
-                          if let url = URL(string: bookmark.url) { self.loadURL(url) }
+                  for (i, b) in BookmarkManager.shared.bookmarks.enumerated() {
+                      alert.addAction(UIAlertAction(title: b.title, style: .default) { _ in
+                          if let url = URL(string: b.url) { self.loadURL(url) }
                       })
                       alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
                           BookmarkManager.shared.remove(at: i)
@@ -1131,7 +954,7 @@ jobs:
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                   present(alert, animated: true)
               }
-              
+
               func showHistory() {
                   let alert = UIAlertController(title: "History", message: nil, preferredStyle: .actionSheet)
                   for entry in HistoryManager.shared.history.prefix(30) {
@@ -1142,7 +965,7 @@ jobs:
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                   present(alert, animated: true)
               }
-              
+
               func showDownloads() {
                   let alert = UIAlertController(title: "Downloads", message: "Saved in Modernize folder", preferredStyle: .actionSheet)
                   alert.addAction(UIAlertAction(title: "Open Downloads Folder", style: .default) { _ in
@@ -1154,21 +977,18 @@ jobs:
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                   present(alert, animated: true)
               }
-              
+
               func textFieldShouldReturn(_ textField: UITextField) -> Bool {
                   textField.resignFirstResponder()
                   guard let text = textField.text, !text.isEmpty else { return true }
-                  
                   if text.hasPrefix("http://") || text.hasPrefix("https://") {
                       if let url = URL(string: text) { loadURL(url) }
                   } else if text.contains(".") && !text.contains(" ") {
                       if let url = URL(string: "https://\(text)") { loadURL(url) }
-                  } else {
-                      loadSearch(text)
-                  }
+                  } else { loadSearch(text) }
                   return true
               }
-              
+
               override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
                   if keyPath == #keyPath(WKWebView.estimatedProgress) {
                       progressView.progress = Float(webView.estimatedProgress)
@@ -1178,9 +998,7 @@ jobs:
                           urlTextField.text = url.absoluteString
                           if let title = webView.title {
                               TabManager.shared.updateCurrentTab(title: title, url: url.absoluteString)
-                              if !TabManager.shared.privateMode {
-                                  HistoryManager.shared.addEntry(title: title, url: url.absoluteString)
-                              }
+                              if !TabManager.shared.privateMode { HistoryManager.shared.addEntry(title: title, url: url.absoluteString) }
                           }
                       }
                   } else if keyPath == #keyPath(WKWebView.canGoBack) {
@@ -1189,23 +1007,16 @@ jobs:
                       forwardButton.isEnabled = webView.canGoForward
                   }
               }
-              
+
               // MARK: - WKScriptMessageHandler
               func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
                   if message.name == "themeHandler", let rgb = message.body as? String {
                       let parts = rgb.split(separator: ",").compactMap { Int($0) }
                       if parts.count == 3 {
-                          let R = CGFloat(parts[0]) / 255.0
-                          let G = CGFloat(parts[1]) / 255.0
-                          let B = CGFloat(parts[2]) / 255.0
-                          
-                          UIView.animate(withDuration: 0.2) {
-                              self.view.backgroundColor = UIColor(red: R, green: G, blue: B, alpha: 1.0)
-                          }
-                          
-                          let luminance = (0.299 * CGFloat(parts[0]) + 0.587 * CGFloat(parts[1]) + 0.114 * CGFloat(parts[2])) / 255.0
+                          let R = CGFloat(parts[0])/255, G = CGFloat(parts[1])/255, B = CGFloat(parts[2])/255
+                          UIView.animate(withDuration: 0.2) { self.view.backgroundColor = UIColor(red: R, green: G, blue: B, alpha: 1) }
+                          let luminance = (0.299*CGFloat(parts[0]) + 0.587*CGFloat(parts[1]) + 0.114*CGFloat(parts[2]))/255
                           let newStyle = luminance < 0.45
-                          
                           if newStyle != self.statusBarStyle {
                               self.statusBarStyle = newStyle
                               self.setNeedsStatusBarAppearanceUpdate()
@@ -1213,52 +1024,40 @@ jobs:
                       }
                   }
               }
-              
+
               // MARK: - WKNavigationDelegate
               func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
                   backButton.isEnabled = webView.canGoBack
                   forwardButton.isEnabled = webView.canGoForward
                   urlTextField.text = webView.url?.absoluteString
               }
-              
+
               func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-                  if let mimeType = navigationResponse.response.mimeType,
-                     mimeType != "text/html" && !mimeType.hasPrefix("text/") && !mimeType.hasPrefix("application/json") {
+                  if let mime = navigationResponse.response.mimeType, mime != "text/html" && !mime.hasPrefix("text/") && !mime.hasPrefix("application/json") {
                       decisionHandler(.download)
                   } else {
                       decisionHandler(.allow)
                   }
               }
-              
-              func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-                  download.delegate = DownloadManager.shared
-              }
-              
-              func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-                  download.delegate = DownloadManager.shared
-              }
-              
+              func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = DownloadManager.shared }
+              func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = DownloadManager.shared }
               func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-                  if navigationAction.targetFrame == nil {
-                      webView.load(navigationAction.request)
-                  }
+                  if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
                   return nil
               }
-              
+
               // MARK: - WKUIDelegate
               func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
                   let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
                   alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
                   present(alert, animated: true)
               }
-              
               func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
                   let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
                   alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
                   present(alert, animated: true)
               }
-              
               func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
                   let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
                   alert.addTextField { $0.text = defaultText }
@@ -1267,11 +1066,10 @@ jobs:
                   present(alert, animated: true)
               }
           }
-          
+
           // MARK: - App Delegate
           class AppDelegate: UIResponder, UIApplicationDelegate {
               var window: UIWindow?
-              
               func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
                   window = UIWindow(frame: UIScreen.main.bounds)
                   window?.rootViewController = BrowserViewController()
@@ -1279,7 +1077,7 @@ jobs:
                   return true
               }
           }
-          
+
           UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
           SWIFT
 
@@ -1332,5 +1130,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-iOS26-Full-Compatibility
+          name: Modernize-Final-IPA
           path: Modernize.ipa

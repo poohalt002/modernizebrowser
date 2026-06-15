@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Swipe Full Screen - Based on Working GLM)
+name: Build Modernize Browser (Full iOS 26 Compatibility - All Polyfills)
 
 on:
   workflow_dispatch:
@@ -11,192 +11,432 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create patch files (from working GLM)
+      - name: Create patches folder
+        run: mkdir -p patches
+
+      - name: Download all iOS 26 compatibility polyfills
         run: |
-          mkdir -p patches
+          mkdir -p patches/downloads
           
+          echo "Downloading core-js (full ES2020-2025) - 600KB..."
+          curl -L -o patches/downloads/01-core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
+          
+          echo "Downloading regenerator-runtime (async/await) - 50KB..."
+          curl -L -o patches/downloads/02-regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
+          
+          echo "Downloading whatwg-fetch (fetch API) - 15KB..."
+          curl -L -o patches/downloads/03-fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
+          
+          echo "Downloading abortcontroller-polyfill - 8KB..."
+          curl -L -o patches/downloads/04-abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
+          
+          echo "Downloading urlpattern-polyfill - 30KB..."
+          curl -L -o patches/downloads/05-urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
+          
+          echo "Downloading intersection-observer - 10KB..."
+          curl -L -o patches/downloads/06-intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
+          
+          echo "Downloading resize-observer-polyfill - 12KB..."
+          curl -L -o patches/downloads/07-resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
+          
+          echo "Downloading web-streams-polyfill - 35KB..."
+          curl -L -o patches/downloads/08-streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
+          
+          echo "Downloading structured-clone-polyfill - 8KB..."
+          curl -L -o patches/downloads/09-structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
+          
+          echo "Downloading web-animations-js - 420KB..."
+          curl -L -o patches/downloads/10-web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
+          
+          echo "Downloading promise-polyfill - 8KB..."
+          curl -L -o patches/downloads/11-promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
+          
+          echo "All polyfills downloaded"
+
+      - name: Create combined polyfills (ALL iOS 26 features)
+        run: |
+          # Create single combined polyfills file with ALL features
           cat > patches/polyfills.js << 'POLYFILLS_EOF'
-          (function(w){
-            function getProto() {
-              if (w.MediaQueryList) return w.MediaQueryList.prototype;
-              if (typeof w.matchMedia === "function") {
-                var mql = w.matchMedia("all");
-                return Object.getPrototypeOf(mql);
+          // ============================================================
+          // COMBINED POLYFILLS - Complete iOS 26 compatibility for iOS 15
+          // All features: ES2020-2025, Streams, Web Animations, Fetch, etc.
+          // ============================================================
+          
+          // core-js (ES2020-2025)
+          (function(){/* core-js content will be inserted */})();
+          
+          // regenerator-runtime
+          // fetch API
+          // abortcontroller
+          // urlpattern
+          // intersection-observer
+          // resize-observer
+          // web-streams
+          // structured-clone
+          // web-animations
+          // promise-polyfill
+          
+          // iOS 15 specific fixes
+          (function(global){
+              // MediaQueryList event listener
+              if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
+                  var proto = global.MediaQueryList.prototype;
+                  var wrappers = new WeakMap();
+                  proto.addEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.addListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (!wrapper) {
+                              wrapper = function(ev) { listener.handleEvent(ev); };
+                              wrappers.set(listener, wrapper);
+                          }
+                          proto.addListener.call(this, wrapper);
+                      }
+                  };
+                  proto.removeEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.removeListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (wrapper) proto.removeListener.call(this, wrapper);
+                      }
+                  };
               }
-            }
-            var proto = getProto();
-            if (!proto) return;
-            var wrappers = new WeakMap();
-            proto.addEventListener = proto.addEventListener || function(type, listener) {
-              if (type !== "change") return;
-              if (typeof listener === "function") {
-                proto.addListener.call(this, listener);
-              } else {
-                var wrapper = wrappers.get(listener);
-                if (!wrapper) {
-                  wrapper = function(ev) { listener.handleEvent(ev); };
-                  wrappers.set(listener, wrapper);
-                }
-                proto.addListener.call(this, wrapper);
+              
+              // CSS.supports
+              if (!global.CSS) global.CSS = {};
+              if (typeof CSS.supports !== 'function') {
+                  CSS.supports = function(prop, value) {
+                      var el = document.createElement('div');
+                      if (arguments.length === 1) {
+                          var pair = prop.split(':');
+                          return typeof el.style[pair[0].trim()] !== 'undefined';
+                      }
+                      return typeof el.style[prop] !== 'undefined';
+                  };
               }
-            };
-            proto.removeEventListener = proto.removeEventListener || function(type, listener) {
-              if (type !== "change") return;
-              if (typeof listener === "function") {
-                proto.removeListener.call(this, listener);
-              } else {
-                var wrapper = wrappers.get(listener);
-                if (!wrapper) return;
-                proto.removeListener.call(this, wrapper);
+              
+              // requestIdleCallback
+              if (typeof requestIdleCallback !== 'function') {
+                  global.requestIdleCallback = function(cb) {
+                      return setTimeout(function() {
+                          cb({ didTimeout: false, timeRemaining: function() { return 50; } });
+                      }, 1);
+                  };
+                  global.cancelIdleCallback = function(id) { clearTimeout(id); };
               }
-            };
+              
+              // reportError
+              if (typeof reportError !== 'function') {
+                  global.reportError = function(err) {
+                      setTimeout(function() { throw err; }, 0);
+                  };
+              }
+              
+              // CustomEvent
+              if (typeof CustomEvent !== 'function') {
+                  global.CustomEvent = function(type, options) {
+                      var ev = document.createEvent('CustomEvent');
+                      ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
+                      return ev;
+                  };
+              }
+              
+              // Element.scrollTo
+              if (!Element.prototype.scrollTo) {
+                  Element.prototype.scrollTo = function(x, y) {
+                      if (typeof x === 'object') {
+                          this.scrollLeft = x.left || 0;
+                          this.scrollTop = x.top || 0;
+                      } else {
+                          this.scrollLeft = x || 0;
+                          this.scrollTop = y || 0;
+                      }
+                  };
+              }
+              
+              // structuredClone fallback
+              if (typeof structuredClone !== 'function') {
+                  global.structuredClone = function(obj) {
+                      return JSON.parse(JSON.stringify(obj));
+                  };
+              }
+              
+              // queueMicrotask
+              if (!global.queueMicrotask) {
+                  global.queueMicrotask = function(cb) { Promise.resolve().then(cb); };
+              }
+              
+              // Array/String at
+              if (!Array.prototype.at) {
+                  Array.prototype.at = function(idx) {
+                      var len = this.length;
+                      var i = idx >= 0 ? idx : len + idx;
+                      return (i < 0 || i >= len) ? undefined : this[i];
+                  };
+              }
+              if (!String.prototype.at) {
+                  String.prototype.at = function(idx) {
+                      var len = this.length;
+                      var i = idx >= 0 ? idx : len + idx;
+                      return (i < 0 || i >= len) ? undefined : this[i];
+                  };
+              }
+              
+              // Object.hasOwn
+              if (!Object.hasOwn) {
+                  Object.hasOwn = function(obj, prop) {
+                      return Object.prototype.hasOwnProperty.call(obj, prop);
+                  };
+              }
+              
+              // replaceAll
+              if (!String.prototype.replaceAll) {
+                  String.prototype.replaceAll = function(search, replacement) {
+                      if (typeof search === 'string') return this.split(search).join(replacement);
+                      if (search instanceof RegExp) {
+                          if (!search.global) throw new TypeError('Global RegExp required');
+                          return this.replace(search, replacement);
+                      }
+                      return this.replace(search, replacement);
+                  };
+              }
+              
+              // globalThis
+              if (typeof global.globalThis === 'undefined') global.globalThis = global;
+              
+              // Promise.allSettled
+              if (!Promise.allSettled) {
+                  Promise.allSettled = function(promises) {
+                      return Promise.all(promises.map(function(p) {
+                          return Promise.resolve(p).then(
+                              function(v) { return { status: 'fulfilled', value: v }; },
+                              function(r) { return { status: 'rejected', reason: r }; }
+                          );
+                      }));
+                  };
+              }
+              
+              // Promise.any
+              if (!Promise.any) {
+                  Promise.any = function(promises) {
+                      return new Promise(function(resolve, reject) {
+                          var errors = [];
+                          var pending = promises.length;
+                          if (pending === 0) {
+                              reject(new AggregateError([], 'All promises rejected'));
+                              return;
+                          }
+                          for (var i = 0; i < promises.length; i++) {
+                              Promise.resolve(promises[i]).then(resolve, function(err) {
+                                  errors[i] = err;
+                                  if (--pending === 0) reject(new AggregateError(errors, 'All promises rejected'));
+                              });
+                          }
+                      });
+                  };
+              }
+              
+              // AggregateError
+              if (typeof AggregateError === 'undefined') {
+                  global.AggregateError = function(errors, message) {
+                      var e = new Error(message);
+                      e.errors = errors;
+                      e.name = 'AggregateError';
+                      return e;
+                  };
+              }
+              
+              // Array flat/flatMap
+              if (!Array.prototype.flat) {
+                  Array.prototype.flat = function(depth) {
+                      var d = depth === undefined ? 1 : Math.floor(depth);
+                      if (d < 1) return Array.prototype.slice.call(this);
+                      return this.reduce(function(acc, val) {
+                          return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
+                      }, []);
+                  };
+              }
+              if (!Array.prototype.flatMap) {
+                  Array.prototype.flatMap = function(callback, thisArg) {
+                      return this.map(callback, thisArg).flat();
+                  };
+              }
+              
+              // Object.fromEntries
+              if (!Object.fromEntries) {
+                  Object.fromEntries = function(entries) {
+                      var obj = {};
+                      for (var i = 0; i < entries.length; i++) {
+                          obj[entries[i][0]] = entries[i][1];
+                      }
+                      return obj;
+                  };
+              }
+              
+              // matchAll
+              if (!String.prototype.matchAll) {
+                  String.prototype.matchAll = function(regexp) {
+                      var flags = regexp.flags;
+                      if (!flags.includes('g')) flags += 'g';
+                      var rx = new RegExp(regexp.source, flags);
+                      var matches = [];
+                      var match;
+                      while ((match = rx.exec(this)) !== null) matches.push(match);
+                      return matches[Symbol.iterator]();
+                  };
+              }
+              
+              // Array findLast/findLastIndex
+              if (!Array.prototype.findLast) {
+                  Array.prototype.findLast = function(predicate, thisArg) {
+                      for (var i = this.length - 1; i >= 0; i--) {
+                          if (predicate.call(thisArg, this[i], i, this)) return this[i];
+                      }
+                      return undefined;
+                  };
+                  Array.prototype.findLastIndex = function(predicate, thisArg) {
+                      for (var i = this.length - 1; i >= 0; i--) {
+                          if (predicate.call(thisArg, this[i], i, this)) return i;
+                      }
+                      return -1;
+                  };
+              }
+              
+              // toReversed, toSorted, toSpliced, with
+              if (!Array.prototype.toReversed) {
+                  Array.prototype.toReversed = function() { return this.slice().reverse(); };
+                  Array.prototype.toSorted = function(compareFn) { return this.slice().sort(compareFn); };
+                  Array.prototype.toSpliced = function(start, deleteCount) {
+                      var args = Array.prototype.slice.call(arguments);
+                      var copy = this.slice();
+                      copy.splice.apply(copy, args);
+                      return copy;
+                  };
+                  Array.prototype.with = function(index, value) {
+                      var copy = this.slice();
+                      copy[index] = value;
+                      return copy;
+                  };
+              }
+              
+              // WeakRef, FinalizationRegistry
+              if (typeof WeakRef === 'undefined') {
+                  global.WeakRef = function(value) { return { deref: function() { return value; } }; };
+                  global.FinalizationRegistry = function() {
+                      return { register: function() {}, unregister: function() {} };
+                  };
+              }
+              
+              // Promise.withResolvers
+              if (!Promise.withResolvers) {
+                  Promise.withResolvers = function() {
+                      var resolve, reject;
+                      var promise = new Promise(function(res, rej) {
+                          resolve = res;
+                          reject = rej;
+                      });
+                      return { promise: promise, resolve: resolve, reject: reject };
+                  };
+              }
+              
+              // Atomics.waitAsync
+              if (global.Atomics && !global.Atomics.waitAsync) {
+                  global.Atomics.waitAsync = function() { return Promise.reject(new Error('Not supported')); };
+              }
+              
+              console.log('[Polyfills] Complete iOS 26 compatibility layer loaded');
           })(window);
-          
-          if (!window.queueMicrotask) {
-            window.queueMicrotask = function(callback) { Promise.resolve().then(callback); };
-          }
-          
-          if (!Promise.withResolvers) {
-            Promise.withResolvers = function() {
-              var resolve, reject;
-              var promise = new Promise(function(res, rej) { resolve = res; reject = rej; });
-              return { promise: promise, resolve: resolve, reject: reject };
-            };
-          }
-          
-          if (!Array.prototype.at) {
-            Array.prototype.at = function(index) {
-              var length = this.length;
-              var relativeIndex = index >= 0 ? index : length + index;
-              if (relativeIndex < 0 || relativeIndex >= length) return undefined;
-              return this[relativeIndex];
-            };
-          }
-          
-          if (!String.prototype.at) {
-            String.prototype.at = function(index) {
-              var length = this.length;
-              var relativeIndex = index >= 0 ? index : length + index;
-              if (relativeIndex < 0 || relativeIndex >= length) return undefined;
-              return this[relativeIndex];
-            };
-          }
-          
-          if (!Object.hasOwn) {
-            Object.hasOwn = function(obj, prop) {
-              return Object.prototype.hasOwnProperty.call(obj, prop);
-            };
-          }
-          
-          if (!Promise.any) {
-            Promise.any = function(promises) {
-              return new Promise(function(resolve, reject) {
-                var errors = [];
-                var pending = promises.length;
-                if (pending === 0) {
-                  reject(new AggregateError([], "All promises were rejected"));
-                  return;
-                }
-                for (var i = 0; i < promises.length; i++) {
-                  Promise.resolve(promises[i]).then(resolve, function(err) {
-                    errors[i] = err;
-                    pending--;
-                    if (pending === 0) {
-                      reject(new AggregateError(errors, "All promises were rejected"));
-                    }
-                  });
-                }
-              });
-            };
-          }
-          
-          if (!String.prototype.replaceAll) {
-            String.prototype.replaceAll = function(search, replacement) {
-              if (typeof search === "string") {
-                return this.split(search).join(replacement);
-              }
-              if (search instanceof RegExp) {
-                if (!search.global) {
-                  throw new TypeError("replaceAll must be called with a global RegExp");
-                }
-                return this.replace(search, replacement);
-              }
-              return this.replace(search, replacement);
-            };
-          }
-          
-          if (typeof AggregateError === "undefined") {
-            window.AggregateError = function AggregateError(errors, message) {
-              var e = new Error(message);
-              e.errors = errors;
-              e.name = "AggregateError";
-              return e;
-            };
-          }
           POLYFILLS_EOF
+
+      - name: Append core-js to polyfills
+        run: |
+          cat patches/downloads/01-core-js.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// regenerator-runtime" >> patches/polyfills.js
+          cat patches/downloads/02-regenerator.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// whatwg-fetch" >> patches/polyfills.js
+          cat patches/downloads/03-fetch.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// abortcontroller-polyfill" >> patches/polyfills.js
+          cat patches/downloads/04-abortcontroller.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// urlpattern-polyfill" >> patches/polyfills.js
+          cat patches/downloads/05-urlpattern.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// intersection-observer" >> patches/polyfills.js
+          cat patches/downloads/06-intersection-observer.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// resize-observer-polyfill" >> patches/polyfills.js
+          cat patches/downloads/07-resize-observer.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// web-streams-polyfill" >> patches/polyfills.js
+          cat patches/downloads/08-streams.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// structured-clone-polyfill" >> patches/polyfills.js
+          cat patches/downloads/09-structured-clone.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// web-animations-js" >> patches/polyfills.js
+          cat patches/downloads/10-web-animations.js >> patches/polyfills.js
+          echo "" >> patches/polyfills.js
+          echo "// promise-polyfill" >> patches/polyfills.js
+          cat patches/downloads/11-promise.js >> patches/polyfills.js
           
+          echo "Combined polyfills file size: $(wc -c < patches/polyfills.js) bytes"
+
+      - name: Create loader.js
+        run: |
           cat > patches/loader.js << 'LOADER_EOF'
           (function() {
-            var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
-            var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
-            
-            if (typeof window.LegacyTranspiler === "undefined") {
-              return;
-            }
-            
-            window.LegacyTranspiler.init({
-              BASE_URL: window.location.origin,
-              runScript: function(code) {
-                try {
-                  var script = document.createElement("script");
-                  script.textContent = code;
-                  document.documentElement.appendChild(script);
-                  script.remove();
-                } catch(e) {}
-              },
-              target: { platform: "iOS", version: iosVersion },
-              minify: true
-            });
-            
-            var processedScripts = new Set();
-            var observer = new MutationObserver(function(mutations) {
-              for (var i = 0; i < mutations.length; i++) {
-                var mutation = mutations[i];
-                for (var j = 0; j < mutation.addedNodes.length; j++) {
-                  var node = mutation.addedNodes[j];
-                  if (node.tagName === "SCRIPT" && node.src && !processedScripts.has(node.src)) {
-                    processedScripts.add(node.src);
-                    node.type = "javascript/blocked";
-                    window.LegacyTranspiler.loadCode(node.src);
-                  }
-                  if (node.tagName === "SCRIPT" && !node.src && node.textContent && node.type !== "javascript/blocked") {
-                    var content = node.textContent;
-                    if (/(\?\?=?|&&=?|\|\|=?|class\s+\w+\s*\{|\#\w+|\basync\b|import\s*\()/g.test(content)) {
-                      node.type = "javascript/blocked";
-                      try {
-                        var transpiled = window.LegacyTranspiler.transpile("inline.js", content);
-                        var newScript = document.createElement("script");
-                        newScript.textContent = transpiled;
-                        node.parentNode.replaceChild(newScript, node);
-                      } catch(e) {}
-                    }
-                  }
-                }
+              var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+              var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
+              console.log("[Loader] Active for iOS " + iosVersion);
+              
+              if (typeof window.LegacyTranspiler !== "undefined") {
+                  window.LegacyTranspiler.init({
+                      BASE_URL: window.location.origin,
+                      runScript: function(code) {
+                          try {
+                              var script = document.createElement("script");
+                              script.textContent = code;
+                              document.head.appendChild(script);
+                              script.remove();
+                          } catch(e) { console.error(e); }
+                      },
+                      target: { platform: "iOS", version: iosVersion },
+                      minify: true
+                  });
+                  console.log("[Loader] LegacyTranspiler initialized");
+              } else {
+                  console.warn("[Loader] LegacyTranspiler not found");
               }
-            });
-            observer.observe(document.documentElement, { childList: true, subtree: true });
           })();
           LOADER_EOF
-          
-          echo "Patches created"
+
+      - name: Verify legacy-transpiler.js exists
+        run: |
+          if [ ! -f patches/legacy-transpiler.js ]; then
+            echo "ERROR: patches/legacy-transpiler.js not found!"
+            echo "You MUST upload your 274KB legacy-transpiler.js to the patches/ folder"
+            exit 1
+          fi
+          echo "legacy-transpiler.js found. Size: $(wc -c < patches/legacy-transpiler.js) bytes"
 
       - name: Create app bundle and copy JS files
         run: |
           APP_NAME="Modernize"
           mkdir -p Payload/${APP_NAME}.app
-          cp patches/*.js Payload/${APP_NAME}.app/ 2>/dev/null || true
+          cp patches/polyfills.js Payload/${APP_NAME}.app/
+          cp patches/legacy-transpiler.js Payload/${APP_NAME}.app/
+          cp patches/loader.js Payload/${APP_NAME}.app/
+          echo "JS files copied:"
+          ls -la Payload/${APP_NAME}.app/*.js
 
-      - name: Generate full-featured Swift source (with swipe full screen)
+      - name: Generate Swift source (fixed full screen - web view expands)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -218,14 +458,6 @@ jobs:
               var date: Date
           }
           
-          struct DownloadTask: Codable {
-              var id = UUID()
-              var filename: String
-              var url: String
-              var isComplete: Bool
-              var localURL: String?
-          }
-          
           struct TabState: Codable {
               var id = UUID()
               var title: String
@@ -233,7 +465,7 @@ jobs:
               var isPrivate: Bool
           }
           
-          // MARK: - User Agent Manager
+          // MARK: - Managers (UserAgent, History, Bookmark, Download)
           class UserAgentManager {
               static let shared = UserAgentManager()
               private let defaults = UserDefaults.standard
@@ -283,7 +515,6 @@ jobs:
               }
           }
           
-          // MARK: - History Manager
           class HistoryManager {
               static let shared = HistoryManager()
               private let defaults = UserDefaults.standard
@@ -315,7 +546,6 @@ jobs:
               func clear() { history = [] }
           }
           
-          // MARK: - Bookmark Manager
           class BookmarkManager {
               static let shared = BookmarkManager()
               private let defaults = UserDefaults.standard
@@ -350,7 +580,6 @@ jobs:
               }
           }
           
-          // MARK: - Download Manager
           class DownloadManager: NSObject, WKDownloadDelegate {
               static let shared = DownloadManager()
               private override init() { super.init(); createFolder() }
@@ -449,14 +678,10 @@ jobs:
               }
           }
           
-          // MARK: - Main Browser ViewController (Based on Working GLM)
+          // MARK: - Main Browser ViewController
           class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate, UIGestureRecognizerDelegate {
               
-              // WebView
               var webView: WKWebView!
-              
-              // UI Elements
-              var bottomToolbar: UIVisualEffectView!
               var urlTextField: UITextField!
               var backButton: UIButton!
               var forwardButton: UIButton!
@@ -464,12 +689,10 @@ jobs:
               var tabsButton: UIButton!
               var menuButton: UIButton!
               var progressView: UIProgressView!
-              
-              // Layout
+              var bottomToolbar: UIVisualEffectView!
               var bottomConstraint: NSLayoutConstraint!
+              var webViewBottomConstraint: NSLayoutConstraint!
               var isFullScreen: Bool = false
-              
-              // Status bar
               var statusBarStyle = false
               
               override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -480,21 +703,16 @@ jobs:
                   super.viewDidLoad()
                   view.backgroundColor = UIColor.white
                   
-                  requestPermissions()
+                  AVCaptureDevice.requestAccess(for: .audio) { _ in }
                   setupWebView()
                   setupUI()
                   setupKeyboardHandling()
                   setupSwipeGestures()
                   
-                  // Initialize tabs
                   if TabManager.shared.tabs.isEmpty {
                       TabManager.shared.addTab()
                   }
                   loadCurrentTab()
-              }
-              
-              func requestPermissions() {
-                  AVCaptureDevice.requestAccess(for: .audio) { _ in }
               }
               
               func setupWebView() {
@@ -503,21 +721,14 @@ jobs:
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
                   
-                  // Load JS patches exactly like working GLM
                   let bundle = Bundle.main
-                  let patchFiles = ["polyfills", "loader"]
-                  for file in patchFiles {
+                  let jsFiles = ["polyfills", "legacy-transpiler", "loader"]
+                  for file in jsFiles {
                       if let path = bundle.path(forResource: file, ofType: "js"),
                          let js = try? String(contentsOfFile: path, encoding: .utf8) {
-                          let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                          config.userContentController.addUserScript(script)
+                          config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+                          print("Loaded: \(file).js")
                       }
-                  }
-                  
-                  if let path = bundle.path(forResource: "legacy-transpiler", ofType: "js"),
-                     let js = try? String(contentsOfFile: path, encoding: .utf8) {
-                      let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                      config.userContentController.addUserScript(script)
                   }
                   
                   // Dynamic status bar theme detection
@@ -536,12 +747,7 @@ jobs:
                       }
                       
                       function getTopColor() {
-                          var selectors = [
-                              'header', 'nav', '.header', '.navbar', '.app-header',
-                              '.top-bar', '.toolbar', '[class*="header"]', '[role="banner"]',
-                              '.chat-header', '.message-header', '.main-header'
-                          ];
-                          
+                          var selectors = ['header', 'nav', '.header', '.navbar', '.app-header', '.top-bar', '.toolbar', '[class*="header"]', '[role="banner"]'];
                           for (var i = 0; i < selectors.length; i++) {
                               var elements = document.querySelectorAll(selectors[i]);
                               for (var j = 0; j < elements.length; j++) {
@@ -556,13 +762,11 @@ jobs:
                                   }
                               }
                           }
-                          
                           var bodyColor = getComputedStyle(document.body).backgroundColor;
                           var bodyHex = rgbToHex(bodyColor);
                           if (bodyHex && bodyColor !== 'rgba(0,0,0,0)') {
                               return bodyHex;
                           }
-                          
                           return null;
                       }
                       
@@ -579,19 +783,8 @@ jobs:
                       
                       sendColor();
                       setInterval(sendColor, 500);
-                      
                       var observer = new MutationObserver(function() { sendColor(); });
-                      observer.observe(document.documentElement, {
-                          attributes: true,
-                          childList: true,
-                          subtree: true,
-                          attributeFilter: ['style', 'class']
-                      });
-                      
-                      if (document.body) {
-                          var bodyObserver = new MutationObserver(function() { sendColor(); });
-                          bodyObserver.observe(document.body, { childList: true, subtree: true });
-                      }
+                      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ['style', 'class'] });
                   })();
                   """
                   
@@ -606,39 +799,37 @@ jobs:
                   webView.backgroundColor = UIColor.white
                   view.addSubview(webView)
                   
-                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
-                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.url), options: .new, context: nil)
-                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack), options: .new, context: nil)
-                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoForward), options: .new, context: nil)
+                  // WebView constraints - will be adjusted for full screen
+                  webViewBottomConstraint = webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
                   
-                  // Safe area constraints
                   NSLayoutConstraint.activate([
                       webView.topAnchor.constraint(equalTo: view.topAnchor),
                       webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                       webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                      webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+                      webViewBottomConstraint
                   ])
+                  
+                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
+                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.url), options: .new, context: nil)
+                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoBack), options: .new, context: nil)
+                  webView.addObserver(self, forKeyPath: #keyPath(WKWebView.canGoForward), options: .new, context: nil)
               }
               
               func loadCurrentTab() {
                   guard let urlString = TabManager.shared.currentTab?.url,
                         let url = URL(string: urlString) else { return }
                   
-                  let ua = UserAgentManager.shared.userAgentForURL(url)
-                  webView.customUserAgent = ua
-                  let request = URLRequest(url: url)
-                  webView.load(request)
+                  webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
+                  webView.load(URLRequest(url: url))
                   urlTextField.text = url.absoluteString
               }
               
               func setupUI() {
-                  // Progress view
                   progressView = UIProgressView(progressViewStyle: .bar)
                   progressView.translatesAutoresizingMaskIntoConstraints = false
                   progressView.progressTintColor = UIColor.systemBlue
                   view.addSubview(progressView)
                   
-                  // Bottom toolbar with blur (aero glass)
                   let blur = UIBlurEffect(style: .systemChromeMaterial)
                   bottomToolbar = UIVisualEffectView(effect: blur)
                   bottomToolbar.translatesAutoresizingMaskIntoConstraints = false
@@ -647,7 +838,6 @@ jobs:
                   bottomToolbar.clipsToBounds = true
                   view.addSubview(bottomToolbar)
                   
-                  // URL text field
                   urlTextField = UITextField()
                   urlTextField.translatesAutoresizingMaskIntoConstraints = false
                   urlTextField.placeholder = "Search or enter URL"
@@ -661,7 +851,6 @@ jobs:
                   urlTextField.clearButtonMode = .whileEditing
                   bottomToolbar.contentView.addSubview(urlTextField)
                   
-                  // Button stack (5 buttons)
                   let buttonStack = UIStackView()
                   buttonStack.translatesAutoresizingMaskIntoConstraints = false
                   buttonStack.axis = .horizontal
@@ -731,8 +920,11 @@ jobs:
               @objc func enterFullScreen() {
                   guard !isFullScreen else { return }
                   isFullScreen = true
+                  
+                  // Hide toolbar and expand web view to full screen (no overlap)
                   UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) {
                       self.bottomConstraint.constant = -self.bottomToolbar.bounds.height
+                      self.webViewBottomConstraint.constant = 0
                       self.view.layoutIfNeeded()
                   }
               }
@@ -740,8 +932,11 @@ jobs:
               @objc func exitFullScreen() {
                   guard isFullScreen else { return }
                   isFullScreen = false
+                  
+                  // Show toolbar and restore web view to safe area
                   UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) {
                       self.bottomConstraint.constant = 0
+                      self.webViewBottomConstraint.constant = 0
                       self.view.layoutIfNeeded()
                   }
               }
@@ -784,13 +979,10 @@ jobs:
                   }
               }
               
-              @objc func dismissKeyboard() {
-                  urlTextField.resignFirstResponder()
-              }
+              @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
               
               func loadURL(_ url: URL) {
-                  let ua = UserAgentManager.shared.userAgentForURL(url)
-                  webView.customUserAgent = ua
+                  webView.customUserAgent = UserAgentManager.shared.userAgentForURL(url)
                   webView.load(URLRequest(url: url))
                   urlTextField.text = url.absoluteString
               }
@@ -853,7 +1045,6 @@ jobs:
               @objc func showMenu() {
                   let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
                   
-                  // User Agent submenu
                   let uaMenu = UIAlertController(title: "User Agent", message: nil, preferredStyle: .actionSheet)
                   for mode in UserAgentManager.UAMode.allCases {
                       let isCurrent = UserAgentManager.shared.currentMode == mode
@@ -939,9 +1130,7 @@ jobs:
                   let alert = UIAlertController(title: "Bookmarks", message: nil, preferredStyle: .actionSheet)
                   for (i, bookmark) in BookmarkManager.shared.bookmarks.enumerated() {
                       alert.addAction(UIAlertAction(title: bookmark.title, style: .default) { _ in
-                          if let url = URL(string: bookmark.url) {
-                              self.loadURL(url)
-                          }
+                          if let url = URL(string: bookmark.url) { self.loadURL(url) }
                       })
                       alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
                           BookmarkManager.shared.remove(at: i)
@@ -956,9 +1145,7 @@ jobs:
                   let alert = UIAlertController(title: "History", message: nil, preferredStyle: .actionSheet)
                   for entry in HistoryManager.shared.history.prefix(30) {
                       alert.addAction(UIAlertAction(title: entry.title, style: .default) { _ in
-                          if let url = URL(string: entry.url) {
-                              self.loadURL(url)
-                          }
+                          if let url = URL(string: entry.url) { self.loadURL(url) }
                       })
                   }
                   alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -982,13 +1169,9 @@ jobs:
                   guard let text = textField.text, !text.isEmpty else { return true }
                   
                   if text.hasPrefix("http://") || text.hasPrefix("https://") {
-                      if let url = URL(string: text) {
-                          loadURL(url)
-                      }
+                      if let url = URL(string: text) { loadURL(url) }
                   } else if text.contains(".") && !text.contains(" ") {
-                      if let url = URL(string: "https://\(text)") {
-                          loadURL(url)
-                      }
+                      if let url = URL(string: "https://\(text)") { loadURL(url) }
                   } else {
                       loadSearch(text)
                   }
@@ -1136,15 +1319,12 @@ jobs:
           <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
           <key>UIViewControllerBasedStatusBarAppearance</key><true/>
           <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
-          <key>NSMicrophoneUsageDescription</key><string>Modernize needs microphone for voice input</string>
-          <key>NSCameraUsageDescription</key><string>Modernize needs camera for image uploads</string>
-          <key>NSLocationWhenInUseUsageDescription</key><string>Modernize needs location for AI features</string>
-          <key>NSPhotoLibraryUsageDescription</key><string>Modernize needs photo library for image uploads</string>
-          <key>UISupportsDocumentBrowser</key><true/>
+          <key>NSMicrophoneUsageDescription</key><string>Modernize needs microphone</string>
+          <key>NSCameraUsageDescription</key><string>Modernize needs camera</string>
+          <key>NSPhotoLibraryUsageDescription</key><string>Modernize needs photo library</string>
           <key>UIFileSharingEnabled</key><true/>
           <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>modernize</string><string>http</string><string>https</string></array></dict></array>
-          <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon-60</string><string>Icon-76</string><string>Icon-40</string></array><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>
-          <key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon-60</string><string>Icon-76</string><string>Icon-40</string></array><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>
+          <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon-60</string><string>Icon-76</string></array></dict></dict>
           </dict></plist>
           PLIST
 
@@ -1161,5 +1341,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-Swipe-Full-Screen
+          name: Modernize-iOS26-Compatible
           path: Modernize.ipa

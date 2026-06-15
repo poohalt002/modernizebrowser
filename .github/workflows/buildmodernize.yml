@@ -1,4 +1,4 @@
-name: Build iOS 26 Compatible Browser (No external JS required)
+name: Build iOS 26 Compatible Browser (Fixed)
 
 on:
   workflow_dispatch:
@@ -16,67 +16,42 @@ jobs:
           APP_NAME="ModernBrowser"
           mkdir -p Payload/${APP_NAME}.app
 
-      - name: Download core-js (ES2020-2025 runtime polyfill)
-        run: |
-          curl -L -o core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
+      - name: Download core-js
+        run: curl -L -o core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
 
       - name: Download web-animations-js
-        run: |
-          curl -L -o web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
+        run: curl -L -o web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
 
       - name: Download whatwg-fetch
-        run: |
-          curl -L -o fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
+        run: curl -L -o fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
 
       - name: Download abortcontroller-polyfill
-        run: |
-          curl -L -o abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
+        run: curl -L -o abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
 
-      - name: Download urlpattern-polyfill
-        run: |
-          curl -L -o urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
+      - name: Download urlpattern-polyfill (with fallback)
+        run: curl -L -o urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js || echo "// stub" > urlpattern.js
 
       - name: Download intersection-observer
-        run: |
-          curl -L -o intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
+        run: curl -L -o intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
 
       - name: Download resize-observer-polyfill
-        run: |
-          curl -L -o resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
+        run: curl -L -o resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
 
       - name: Download web-streams-polyfill
-        run: |
-          curl -L -o streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
+        run: curl -L -o streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
 
       - name: Download structured-clone-polyfill
-        run: |
-          curl -L -o structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
+        run: curl -L -o structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
 
-      - name: Create syntax transpiler (replaces legacy-transpiler.js)
+      - name: Create syntax transpiler
         run: |
           cat > syntax-transpiler.js << 'EOF'
-          // Simple but effective syntax transpiler for iOS 15
-          // Handles: optional chaining (?.), nullish coalescing (??), logical assignment (||=, &&=, ??=)
-          // private fields (#), and class syntax (basic)
           (function() {
-              var originalParse = JSON.parse;
-              // This is a runtime polyfill for syntax – we actually need to transform code before eval.
-              // Since we cannot intercept all script tags easily, we'll rely on core-js for most,
-              // and add a simple string replacement for inline scripts via the loader.
-              // For now, we provide a stub that logs a warning.
               window.__syntaxTranspiler = {
                   transform: function(code) {
-                      // Basic replacements for common patterns
                       var transformed = code;
-                      // Optional chaining a?.b -> a && a.b (simplified, not perfect but works for many cases)
-                      transformed = transformed.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\?\./g, function(match, p1) {
-                          return p1 + ' && ' + p1 + '.';
-                      });
-                      // Nullish coalescing a ?? b -> a !== null && a !== undefined ? a : b
-                      transformed = transformed.replace(/([^\s]+)\s*\?\?\s*([^;]+)/g, function(match, left, right) {
-                          return '(' + left + ' !== null && ' + left + ' !== undefined ? ' + left + ' : ' + right + ')';
-                      });
-                      // Logical assignment a ||= b -> a || (a = b)
+                      transformed = transformed.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\?\./g, '$1 && $1.');
+                      transformed = transformed.replace(/([^\s]+)\s*\?\?\s*([^;]+)/g, '($1 !== null && $1 !== undefined ? $1 : $2)');
                       transformed = transformed.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\|\|=([^;]+)/g, '$1 || ($1 = $2)');
                       transformed = transformed.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\s*&&=([^;]+)/g, '$1 && ($1 = $2)');
                       transformed = transformed.replace(/([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\?\?=([^;]+)/g, '($1 === null || $1 === undefined) && ($1 = $2)');
@@ -86,18 +61,12 @@ jobs:
           })();
           EOF
 
-      - name: Create loader.js (initializes transpiler and polyfills)
+      - name: Create loader
         run: |
           cat > loader.js << 'EOF'
           (function() {
-              console.log("Loader: initializing polyfills");
-              // Inject core-js, fetch, streams, etc. – they are already loaded as user scripts.
-              // This loader simply ensures LegacyTranspiler compatibility.
               window.LegacyTranspiler = {
-                  init: function(options) {
-                      console.log("LegacyTranspiler init", options);
-                      window.__transpile = options.runScript;
-                  },
+                  init: function(options) { window.__transpile = options.runScript; },
                   loadCode: function(url) {
                       fetch(url).then(r => r.text()).then(code => {
                           var transformed = window.__syntaxTranspiler ? window.__syntaxTranspiler.transform(code) : code;
@@ -111,86 +80,74 @@ jobs:
           })();
           EOF
 
-      - name: Create anti‑detection script
+      - name: Create anti-detection script
         run: |
           cat > anti-detection.js << 'EOF'
           (function() {
-              // Remove webdriver flag
               delete navigator.__proto__.webdriver;
               Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-              // Add plugins
-              Object.defineProperty(navigator, 'plugins', {
-                  get: () => {
-                      var plugins = [
-                          { name: 'PDF Viewer', filename: 'PDF Viewer.plugin' },
-                          { name: 'QuickTime Plugin', filename: 'QuickTime Plugin.plugin' }
-                      ];
-                      plugins.length = 2;
-                      return plugins;
-                  }
-              });
+              Object.defineProperty(navigator, 'plugins', { get: () => { var p = [{ name: 'PDF Viewer' }]; p.length = 1; return p; } });
               Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
               if (!navigator.permissions) navigator.permissions = { query: () => Promise.resolve({ state: 'prompt' }) };
               window.chrome = { runtime: {} };
-              console.log("[Anti‑detection] active");
           })();
           EOF
 
-      - name: Combine all JS files into one (to avoid injection order issues)
+      - name: Combine all JS files
         run: |
           cat core-js.js web-animations.js fetch.js abortcontroller.js urlpattern.js intersection-observer.js resize-observer.js streams.js structured-clone.js syntax-transpiler.js loader.js anti-detection.js > combined.js
           echo "Combined JS size: $(wc -c < combined.js) bytes"
 
-      - name: Generate Swift source
+      - name: Copy combined JS into app bundle
+        run: |
+          APP_NAME="ModernBrowser"
+          cp combined.js Payload/${APP_NAME}.app/
+
+      - name: Generate corrected Swift source
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
           import WebKit
           import AVFoundation
 
-          class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+          class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UITextFieldDelegate {
               var webView: WKWebView!
               var urlTextField: UITextField!
-              var backButton: UIButton!
-              var forwardButton: UIButton!
-              var reloadButton: UIButton!
-
+              var toolbar: UIToolbar!
+              
               override func viewDidLoad() {
                   super.viewDidLoad()
                   view.backgroundColor = UIColor.white
                   AVCaptureDevice.requestAccess(for: .audio) { _ in }
-
+                  
                   let config = WKWebViewConfiguration()
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
-
-                  // Load the combined JS file as a user script at document start
+                  
                   if let jsPath = Bundle.main.path(forResource: "combined", ofType: "js"),
                      let js = try? String(contentsOfFile: jsPath) {
                       let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
                       config.userContentController.addUserScript(script)
                   }
-
+                  
                   webView = WKWebView(frame: .zero, configuration: config)
                   webView.translatesAutoresizingMaskIntoConstraints = false
                   webView.navigationDelegate = self
                   webView.uiDelegate = self
                   webView.allowsBackForwardNavigationGestures = true
-                  // Use a real iOS user agent
                   webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
                   view.addSubview(webView)
-
-                  // Simple bottom toolbar
-                  let toolbar = UIToolbar()
+                  
+                  toolbar = UIToolbar()
                   toolbar.translatesAutoresizingMaskIntoConstraints = false
                   view.addSubview(toolbar)
-
+                  
                   let backItem = UIBarButtonItem(title: "◀", style: .plain, target: self, action: #selector(goBack))
                   let forwardItem = UIBarButtonItem(title: "▶", style: .plain, target: self, action: #selector(goForward))
                   let reloadItem = UIBarButtonItem(barButtonSystemItem: .refresh, target: self, action: #selector(reload))
                   let flexible = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
                   toolbar.items = [backItem, flexible, forwardItem, flexible, reloadItem]
-
+                  
                   urlTextField = UITextField()
                   urlTextField.translatesAutoresizingMaskIntoConstraints = false
                   urlTextField.placeholder = "Enter URL"
@@ -200,7 +157,7 @@ jobs:
                   urlTextField.returnKeyType = .go
                   urlTextField.delegate = self
                   view.addSubview(urlTextField)
-
+                  
                   NSLayoutConstraint.activate([
                       webView.topAnchor.constraint(equalTo: view.topAnchor),
                       webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -215,28 +172,26 @@ jobs:
                       urlTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
                       urlTextField.heightAnchor.constraint(equalToConstant: 40)
                   ])
-
+                  
                   if let url = URL(string: "https://arena.ai") {
                       webView.load(URLRequest(url: url))
                   }
               }
-
+              
               @objc func goBack() { webView.goBack() }
               @objc func goForward() { webView.goForward() }
               @objc func reload() { webView.reload() }
-
-              func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+              
+              @objc func textFieldShouldReturn(_ textField: UITextField) -> Bool {
                   textField.resignFirstResponder()
                   if let text = textField.text, let url = URL(string: text.hasPrefix("http") ? text : "https://\(text)") {
                       webView.load(URLRequest(url: url))
                   }
                   return true
               }
-
+              
               func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
                   urlTextField.text = webView.url?.absoluteString
-                  backButton?.isEnabled = webView.canGoBack
-                  forwardButton?.isEnabled = webView.canGoForward
               }
           }
 
@@ -252,11 +207,6 @@ jobs:
 
           UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(AppDelegate.self))
           SWIFT
-
-      - name: Copy combined JS into app bundle
-        run: |
-          APP_NAME="ModernBrowser"
-          cp combined.js Payload/${APP_NAME}.app/
 
       - name: Compile Swift
         run: |

@@ -1,4 +1,4 @@
-name: Build Modernize Browser (HTML Loader Method)
+name: Build Modernize Browser (HTML Loader - Fixed)
 
 on:
   workflow_dispatch:
@@ -21,21 +21,29 @@ jobs:
           fi
           echo "legacy-transpiler.js size: $(wc -c < patches/legacy-transpiler.js) bytes"
 
-      - name: Create directory structure
-        run: mkdir -p Payload/Modernize.app
+      - name: Create app bundle
+        run: |
+          APP_NAME="Modernize"
+          mkdir -p Payload/${APP_NAME}.app
 
-      - name: Download all polyfills
+      - name: Download runtime polyfills
         run: |
           curl -L -o patches/core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
           curl -L -o patches/regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
           curl -L -o patches/fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
-          curl -L -o patches/intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
-          curl -L -o patches/streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
           echo "Polyfills downloaded"
 
-      - name: Create single HTML loader file (contains ALL JS)
+      - name: Create complete HTML loader with ALL JS embedded
         run: |
-          cat > Payload/Modernize.app/loader.html << 'HTML_EOF'
+          APP_NAME="Modernize"
+          
+          # Read all JS files into variables (escape for safe embedding)
+          CORE_JS=$(cat patches/core-js.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
+          REGEN_JS=$(cat patches/regenerator.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
+          FETCH_JS=$(cat patches/fetch.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
+          LEGACY_JS=$(cat patches/legacy-transpiler.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
+          
+          cat > Payload/${APP_NAME}.app/loader.html << 'HTML_EOF'
           <!DOCTYPE html>
           <html>
           <head>
@@ -43,18 +51,17 @@ jobs:
               <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
               <title>Modernize Browser</title>
               <style>
-                  body { margin: 0; padding: 0; }
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { background: #000; overflow: hidden; }
                   iframe { width: 100%; height: 100%; border: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
               </style>
           </head>
           <body>
-              <iframe id="webFrame"></iframe>
+              <iframe id="webFrame" allow="camera; microphone; geolocation; fullscreen"></iframe>
               <script>
               // ============================================================
-              // STEP 1: Load ALL polyfills in correct order
+              // STEP 1: ES2020-2025 Basic Polyfills
               // ============================================================
-              
-              // ES2020-2025 Polyfills
               (function(global){
                   if (!global.queueMicrotask) global.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
                   if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
@@ -104,232 +111,6 @@ jobs:
                           }, []);
                       };
                   }
-                  if (!Array.prototype.flatMap) {
-                      Array.prototype.flatMap = function(callback, thisArg) {
-                          return this.map(callback, thisArg).flat();
-                      };
-                  }
-                  if (!Object.fromEntries) {
-                      Object.fromEntries = function(entries) {
-                          var obj = {};
-                          for (var i = 0; i < entries.length; i++) {
-                              var entry = entries[i];
-                              obj[entry[0]] = entry[1];
-                          }
-                          return obj;
-                      };
-                  }
-                  if (!String.prototype.matchAll) {
-                      String.prototype.matchAll = function(regexp) {
-                          var flags = regexp.flags;
-                          if (!flags.includes('g')) flags += 'g';
-                          var rx = new RegExp(regexp.source, flags);
-                          var matches = [];
-                          var match;
-                          while ((match = rx.exec(this)) !== null) matches.push(match);
-                          return matches[Symbol.iterator]();
-                      };
-                  }
-                  console.log('[Loader] ES2020-2025 polyfills loaded');
-              })(window);
-              
-              // MediaQueryList fix
-              if (window.MediaQueryList && !window.MediaQueryList.prototype.addEventListener) {
-                  var proto = window.MediaQueryList.prototype;
-                  var wrappers = new WeakMap();
-                  proto.addEventListener = function(type, listener) {
-                      if (type !== 'change') return;
-                      if (typeof listener === 'function') {
-                          proto.addListener.call(this, listener);
-                      } else {
-                          var wrapper = wrappers.get(listener);
-                          if (!wrapper) {
-                              wrapper = function(ev) { listener.handleEvent(ev); };
-                              wrappers.set(listener, wrapper);
-                          }
-                          proto.addListener.call(this, wrapper);
-                      }
-                  };
-                  proto.removeEventListener = function(type, listener) {
-                      if (type !== 'change') return;
-                      if (typeof listener === 'function') {
-                          proto.removeListener.call(this, listener);
-                      } else {
-                          var wrapper = wrappers.get(listener);
-                          if (wrapper) proto.removeListener.call(this, wrapper);
-                      }
-                  };
-              }
-              
-              // CSS.supports
-              if (!window.CSS) window.CSS = {};
-              if (typeof CSS.supports !== 'function') {
-                  CSS.supports = function(prop, value) {
-                      var el = document.createElement('div');
-                      if (arguments.length === 1) {
-                          var pair = prop.split(':');
-                          return typeof el.style[pair[0].trim()] !== 'undefined';
-                      }
-                      return typeof el.style[prop] !== 'undefined';
-                  };
-              }
-              
-              // requestIdleCallback
-              if (typeof requestIdleCallback !== 'function') {
-                  window.requestIdleCallback = function(cb) {
-                      return setTimeout(function() {
-                          cb({ didTimeout: false, timeRemaining: function() { return 50; } });
-                      }, 1);
-                  };
-                  window.cancelIdleCallback = function(id) { clearTimeout(id); };
-              }
-              
-              // CustomEvent
-              if (typeof CustomEvent !== 'function') {
-                  window.CustomEvent = function(type, options) {
-                      var ev = document.createEvent('CustomEvent');
-                      ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
-                      return ev;
-                  };
-              }
-              
-              console.log('[Loader] iOS 15 fallbacks loaded');
-              
-              // ============================================================
-              // STEP 2: Load core-js and other polyfills from embedded strings
-              // ============================================================
-              
-              // core-js (minified - will be inserted by workflow)
-              // regenerator-runtime (will be inserted)
-              // whatwg-fetch (will be inserted)
-              // intersection-observer (will be inserted)
-              // streams (will be inserted)
-              // legacy-transpiler.js (YOUR 274KB FILE - will be inserted)
-              
-              // ============================================================
-              // STEP 3: Initialize LegacyTranspiler and load website
-              // ============================================================
-              
-              var targetURL = "https://z.ai";
-              var iframe = document.getElementById('webFrame');
-              
-              function loadWebsite() {
-                  if (typeof window.LegacyTranspiler !== 'undefined' && window.LegacyTranspiler.init) {
-                      window.LegacyTranspiler.init({
-                          BASE_URL: targetURL,
-                          runScript: function(code) {
-                              try {
-                                  var script = document.createElement("script");
-                                  script.textContent = code;
-                                  document.head.appendChild(script);
-                                  script.remove();
-                              } catch(e) { console.error(e); }
-                          },
-                          target: { platform: "iOS", version: "15.0" },
-                          minify: true
-                      });
-                      console.log('[Loader] LegacyTranspiler initialized');
-                  } else {
-                      console.warn('[Loader] LegacyTranspiler not found');
-                  }
-                  
-                  // Load the actual website
-                  iframe.src = targetURL;
-              }
-              
-              // Wait for all scripts to load
-              if (document.readyState === 'loading') {
-                  document.addEventListener('DOMContentLoaded', loadWebsite);
-              } else {
-                  loadWebsite();
-              }
-              </script>
-          </body>
-          </html>
-          HTML_EOF
-
-      - name: Embed all JS files into the loader HTML
-        run: |
-          # This step embeds the actual JS file contents into the HTML
-          # We'll use sed to replace placeholders (but for simplicity, we'll append)
-          
-          HTML_FILE="Payload/Modernize.app/loader.html"
-          
-          # Insert core-js
-          sed -i '' '/regenerator-runtime (will be inserted)/a\
-          // core-js.js\
-          '$(cat patches/core-js.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g')''$'\n' $HTML_FILE 2>/dev/null || echo "Core-js injection skipped"
-          
-          # For simplicity, we'll use a different approach - rewrite the whole file with all content
-          
-          echo "Creating final loader HTML with all polyfills embedded..."
-          
-          cat > Payload/Modernize.app/loader.html << 'HTML_FINAL'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-              <title>Modernize Browser</title>
-              <style>
-                  body { margin: 0; padding: 0; background: #000; }
-                  iframe { width: 100%; height: 100%; border: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
-              </style>
-          </head>
-          <body>
-              <iframe id="webFrame"></iframe>
-              <script>
-              // Combined polyfills and transpiler loader
-              (function(){
-                  // Basic ES2020-2025 polyfills
-                  if (!window.queueMicrotask) window.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
-                  if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
-                  if (!String.prototype.at) String.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
-                  if (!Object.hasOwn) Object.hasOwn = function(obj,prop){ return Object.prototype.hasOwnProperty.call(obj,prop); };
-                  if (!String.prototype.replaceAll) String.prototype.replaceAll = function(s,r){ if(typeof s==="string")return this.split(s).join(r); if(s instanceof RegExp){if(!s.global)throw new TypeError("Global RegExp required"); return this.replace(s,r);} return this.replace(s,r); };
-                  if (typeof window.globalThis === 'undefined') window.globalThis = window;
-                  if (!Promise.allSettled) {
-                      Promise.allSettled = function(promises) {
-                          return Promise.all(promises.map(function(p) {
-                              return Promise.resolve(p).then(
-                                  function(v) { return { status: 'fulfilled', value: v }; },
-                                  function(r) { return { status: 'rejected', reason: r }; }
-                              );
-                          }));
-                      };
-                  }
-                  if (!Promise.any) {
-                      Promise.any = function(promises) {
-                          return new Promise(function(resolve, reject) {
-                              var errors = [];
-                              var pending = promises.length;
-                              if (pending === 0) reject(new AggregateError([], 'All promises rejected'));
-                              for (var i = 0; i < promises.length; i++) {
-                                  Promise.resolve(promises[i]).then(resolve, function(err) {
-                                      errors[i] = err;
-                                      if (--pending === 0) reject(new AggregateError(errors, 'All promises rejected'));
-                                  });
-                              }
-                          });
-                      };
-                  }
-                  if (typeof AggregateError === 'undefined') {
-                      window.AggregateError = function(errors, message) {
-                          var e = new Error(message);
-                          e.errors = errors;
-                          e.name = 'AggregateError';
-                          return e;
-                      };
-                  }
-                  if (!Array.prototype.flat) {
-                      Array.prototype.flat = function(depth) {
-                          var d = depth === undefined ? 1 : Math.floor(depth);
-                          if (d < 1) return Array.prototype.slice.call(this);
-                          return this.reduce(function(acc, val) {
-                              return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
-                          }, []);
-                      };
-                  }
                   if (!Array.prototype.flatMap) Array.prototype.flatMap = function(cb,thisArg){ return this.map(cb,thisArg).flat(); };
                   if (!Object.fromEntries) {
                       Object.fromEntries = function(entries) {
@@ -349,10 +130,15 @@ jobs:
                           return matches[Symbol.iterator]();
                       };
                   }
-                  
-                  // MediaQueryList fix
-                  if (window.MediaQueryList && !window.MediaQueryList.prototype.addEventListener) {
-                      var proto = window.MediaQueryList.prototype;
+                  console.log('[Loader] ES2020-2025 polyfills loaded');
+              })(window);
+              
+              // ============================================================
+              // STEP 2: iOS 15 Web API Fallbacks
+              // ============================================================
+              (function(global){
+                  if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
+                      var proto = global.MediaQueryList.prototype;
                       var wrappers = new WeakMap();
                       proto.addEventListener = function(type, listener) {
                           if (type !== 'change') return;
@@ -372,9 +158,7 @@ jobs:
                           }
                       };
                   }
-                  
-                  // CSS.supports
-                  if (!window.CSS) window.CSS = {};
+                  if (!global.CSS) global.CSS = {};
                   if (typeof CSS.supports !== 'function') {
                       CSS.supports = function(prop, value) {
                           var el = document.createElement('div');
@@ -385,41 +169,90 @@ jobs:
                           return typeof el.style[prop] !== 'undefined';
                       };
                   }
-                  
-                  // requestIdleCallback
                   if (typeof requestIdleCallback !== 'function') {
-                      window.requestIdleCallback = function(cb) { return setTimeout(function() { cb({ didTimeout: false, timeRemaining: function() { return 50; } }); }, 1); };
-                      window.cancelIdleCallback = function(id) { clearTimeout(id); };
+                      global.requestIdleCallback = function(cb) {
+                          return setTimeout(function() { cb({ didTimeout: false, timeRemaining: function() { return 50; } }); }, 1);
+                      };
+                      global.cancelIdleCallback = function(id) { clearTimeout(id); };
                   }
-                  
-                  // CustomEvent
                   if (typeof CustomEvent !== 'function') {
-                      window.CustomEvent = function(type, options) {
+                      global.CustomEvent = function(type, options) {
                           var ev = document.createEvent('CustomEvent');
                           ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
                           return ev;
                       };
                   }
-                  
-                  // Element.scrollTo
                   if (!Element.prototype.scrollTo) {
                       Element.prototype.scrollTo = function(x, y) {
                           if (typeof x === 'object') { this.scrollLeft = x.left || 0; this.scrollTop = x.top || 0; }
                           else { this.scrollLeft = x || 0; this.scrollTop = y || 0; }
                       };
                   }
-                  
-                  console.log('[Loader] Base polyfills loaded');
-                  
-                  // Load core-js (full ES2020-2025)
-              })();
-              </script>
-              <script>
-              // LOAD ACTUAL WEBSITE
+                  console.log('[Loader] iOS 15 fallbacks loaded');
+              })(window);
+              
+              // ============================================================
+              // STEP 3: core-js (embedded)
+              // ============================================================
+              try {
+                  ${CORE_JS}
+                  console.log('[Loader] core-js loaded');
+              } catch(e) { console.error('[Loader] core-js error:', e); }
+              
+              // ============================================================
+              // STEP 4: regenerator-runtime (embedded)
+              // ============================================================
+              try {
+                  ${REGEN_JS}
+                  console.log('[Loader] regenerator loaded');
+              } catch(e) { console.error('[Loader] regenerator error:', e); }
+              
+              // ============================================================
+              // STEP 5: whatwg-fetch (embedded)
+              // ============================================================
+              try {
+                  ${FETCH_JS}
+                  console.log('[Loader] fetch loaded');
+              } catch(e) { console.error('[Loader] fetch error:', e); }
+              
+              // ============================================================
+              // STEP 6: YOUR LegacyTranspiler (embedded)
+              // ============================================================
+              try {
+                  ${LEGACY_JS}
+                  console.log('[Loader] LegacyTranspiler loaded');
+              } catch(e) { console.error('[Loader] LegacyTranspiler error:', e); }
+              
+              // ============================================================
+              // STEP 7: Initialize and load website
+              // ============================================================
               var iframe = document.getElementById('webFrame');
               var targetURL = "https://z.ai";
+              var userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
+              
+              function initTranspiler() {
+                  if (typeof window.LegacyTranspiler !== 'undefined' && window.LegacyTranspiler.init) {
+                      window.LegacyTranspiler.init({
+                          BASE_URL: targetURL,
+                          runScript: function(code) {
+                              try {
+                                  var script = document.createElement("script");
+                                  script.textContent = code;
+                                  document.head.appendChild(script);
+                                  script.remove();
+                              } catch(e) { console.error(e); }
+                          },
+                          target: { platform: "iOS", version: "15.0" },
+                          minify: true
+                      });
+                      console.log('[Loader] LegacyTranspiler initialized');
+                  } else {
+                      console.warn('[Loader] LegacyTranspiler not found');
+                  }
+              }
               
               function loadWebsite() {
+                  initTranspiler();
                   iframe.src = targetURL;
                   console.log('[Loader] Loading: ' + targetURL);
               }
@@ -429,25 +262,38 @@ jobs:
               } else {
                   loadWebsite();
               }
+              
+              // Handle iframe navigation updates (for URL bar)
+              iframe.addEventListener('load', function() {
+                  try {
+                      var iframeURL = iframe.contentWindow.location.href;
+                      if (iframeURL && iframeURL !== targetURL) {
+                          // Send message to Swift (will be handled by WebKit message handler)
+                          window.webkit?.messageHandlers?.urlUpdate?.postMessage(iframeURL);
+                      }
+                  } catch(e) { /* cross-origin, ignore */ }
+              });
               </script>
           </body>
           </html>
-          HTML_FINAL
+          HTML_EOF
           
-          echo "Loader HTML created"
+          # Replace the placeholders with actual JS content
+          sed -i '' "s|\${CORE_JS}|$(cat patches/core-js.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
+          sed -i '' "s|\${REGEN_JS}|$(cat patches/regenerator.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
+          sed -i '' "s|\${FETCH_JS}|$(cat patches/fetch.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
+          sed -i '' "s|\${LEGACY_JS}|$(cat patches/legacy-transpiler.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
+          
+          echo "HTML loader created with embedded JS"
+          ls -la Payload/${APP_NAME}.app/
 
-      - name: Copy loader HTML to app bundle
-        run: |
-          APP_NAME="Modernize"
-          cp Payload/${APP_NAME}.app/loader.html Payload/${APP_NAME}.app/
-
-      - name: Generate Swift source (loads local HTML file)
+      - name: Generate Swift source
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
           import WebKit
 
-          class ViewController: UIViewController, WKNavigationDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate {
+          class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate, UIGestureRecognizerDelegate {
               
               var webView: WKWebView!
               var urlTextField: UITextField!
@@ -481,13 +327,23 @@ jobs:
                   let config = WKWebViewConfiguration()
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
+                  config.userContentController.add(self, name: "urlUpdate")
                   
                   webView = WKWebView(frame: .zero, configuration: config)
                   webView.translatesAutoresizingMaskIntoConstraints = false
                   webView.navigationDelegate = self
+                  webView.uiDelegate = self
                   webView.allowsBackForwardNavigationGestures = true
                   view.addSubview(webView)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
+              }
+              
+              func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+                  if message.name == "urlUpdate", let urlString = message.body as? String {
+                      DispatchQueue.main.async {
+                          self.urlTextField.text = urlString
+                      }
+                  }
               }
               
               func setupUI() {
@@ -636,7 +492,6 @@ jobs:
               @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
               
               func loadURL(_ url: URL) {
-                  // Navigate the iframe inside the loader
                   let js = "var iframe = document.getElementById('webFrame'); iframe.src = '\(url.absoluteString)';"
                   webView.evaluateJavaScript(js) { _, error in
                       if let error = error { print("JS error: \(error)") }
@@ -682,6 +537,10 @@ jobs:
                   urlTextField.text = webView.url?.absoluteString
                   backButton.isEnabled = webView.canGoBack
                   forwardButton.isEnabled = webView.canGoForward
+              }
+              
+              func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+                  print("Navigation failed: \(error.localizedDescription)")
               }
           }
 
@@ -747,5 +606,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-HTML-Loader
+          name: Modernize-HTML-Loader-Fixed
           path: Modernize.ipa

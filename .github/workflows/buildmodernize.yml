@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Final - z.ai & arena.ai)
+name: Build Modernize Browser (Working Google + z.ai + arena.ai)
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Create patches folder
         run: mkdir -p patches
 
-      - name: Create GLM‑style polyfills.js
+      - name: Create GLM‑style polyfills.js (PROVEN to work for z.ai)
         run: |
           cat > patches/polyfills.js << 'POLYFILLS_EOF'
           (function(w){
@@ -136,6 +136,228 @@ jobs:
           }
           POLYFILLS_EOF
 
+      - name: Create non‑invasive enhanced polyfills (only adds missing APIs)
+        run: |
+          cat > patches/legacy-transpiler-enhanced.js << 'ENHANCED_EOF'
+          // Enhanced polyfills – adds modern Web APIs ONLY if missing (does NOT override native)
+          (function(global) {
+              'use strict';
+              
+              // ---- fetch with Headers/Request/Response (only if missing)
+              if (typeof global.fetch !== 'function') {
+                  (function() {
+                      function Headers(init) {
+                          this._map = new Map();
+                          if (init) {
+                              if (init instanceof Headers) init.forEach((v,k)=>this.append(k,v));
+                              else if (Array.isArray(init)) init.forEach(([k,v])=>this.append(k,v));
+                              else Object.keys(init).forEach(k=>this.append(k,init[k]));
+                          }
+                      }
+                      Headers.prototype.append = function(k,v) { this._map.set(k.toLowerCase(), v); };
+                      Headers.prototype.delete = function(k) { this._map.delete(k.toLowerCase()); };
+                      Headers.prototype.get = function(k) { return this._map.get(k.toLowerCase()) || null; };
+                      Headers.prototype.has = function(k) { return this._map.has(k.toLowerCase()); };
+                      Headers.prototype.set = function(k,v) { this._map.set(k.toLowerCase(), v); };
+                      Headers.prototype.forEach = function(cb) { this._map.forEach((v,k)=>cb(v,k,this)); };
+                      global.Headers = Headers;
+          
+                      function Request(input, init) {
+                          this.url = typeof input === 'string' ? input : input.url;
+                          this.method = (init && init.method) || 'GET';
+                          this.headers = new Headers(init && init.headers);
+                          this.body = init && init.body;
+                      }
+                      global.Request = Request;
+          
+                      function Response(body, init) {
+                          this.status = (init && init.status) || 200;
+                          this.statusText = (init && init.statusText) || '';
+                          this.headers = new Headers(init && init.headers);
+                          this.body = body;
+                          this.ok = this.status >= 200 && this.status < 300;
+                      }
+                      global.Response = Response;
+          
+                      global.fetch = function(url, options) {
+                          return new Promise(function(resolve, reject) {
+                              var xhr = new XMLHttpRequest();
+                              xhr.open(options && options.method || 'GET', url);
+                              if (options && options.headers) {
+                                  var headers = new Headers(options.headers);
+                                  headers.forEach(function(v,k) { xhr.setRequestHeader(k, v); });
+                              }
+                              xhr.onload = function() {
+                                  resolve(new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText }));
+                              };
+                              xhr.onerror = function() { reject(new TypeError('Network request failed')); };
+                              xhr.send(options && options.body);
+                          });
+                      };
+                  })();
+              }
+          
+              // ---- AbortController (only if missing)
+              if (typeof AbortController === 'undefined') {
+                  function AbortSignal() {
+                      this.aborted = false;
+                      this._listeners = [];
+                  }
+                  AbortSignal.prototype.addEventListener = function(type, listener) {
+                      if (type === 'abort') this._listeners.push(listener);
+                  };
+                  AbortSignal.prototype.removeEventListener = function(type, listener) {
+                      this._listeners = this._listeners.filter(l => l !== listener);
+                  };
+                  AbortSignal.prototype.dispatchEvent = function() {
+                      this.aborted = true;
+                      this._listeners.forEach(l => l());
+                  };
+                  global.AbortSignal = AbortSignal;
+                  global.AbortController = function() {
+                      this.signal = new AbortSignal();
+                      this.abort = function() { this.signal.dispatchEvent(); };
+                  };
+              }
+          
+              // ---- URLPattern (stub)
+              if (typeof URLPattern === 'undefined') {
+                  global.URLPattern = function() {
+                      this.test = function() { return false; };
+                      this.exec = function() { return null; };
+                  };
+              }
+          
+              // ---- IntersectionObserver (if missing)
+              if (typeof IntersectionObserver === 'undefined') {
+                  global.IntersectionObserver = function(callback) {
+                      this.observe = function(el) {
+                          setTimeout(function() {
+                              callback([{ target: el, isIntersecting: true, intersectionRatio: 1 }]);
+                          }, 0);
+                      };
+                      this.unobserve = function() {};
+                      this.disconnect = function() {};
+                  };
+              }
+          
+              // ---- ResizeObserver (if missing)
+              if (typeof ResizeObserver === 'undefined') {
+                  global.ResizeObserver = function(callback) {
+                      this.observe = function(el) {
+                          setTimeout(function() {
+                              callback([{ target: el, contentRect: el.getBoundingClientRect() }]);
+                          }, 0);
+                      };
+                      this.unobserve = function() {};
+                      this.disconnect = function() {};
+                  };
+              }
+          
+              // ---- Web Streams (if missing)
+              if (typeof ReadableStream === 'undefined') {
+                  global.ReadableStream = function() {
+                      this.getReader = function() {
+                          return { read: function() { return Promise.resolve({ done: true, value: undefined }); } };
+                      };
+                  };
+                  global.WritableStream = function() {
+                      this.getWriter = function() {
+                          return { write: function() {}, close: function() {} };
+                      };
+                  };
+                  global.TransformStream = function() {
+                      this.readable = new ReadableStream();
+                      this.writable = new WritableStream();
+                  };
+              }
+          
+              // ---- Web Animations stub (if missing)
+              if (!Element.prototype.animate) {
+                  Element.prototype.animate = function(keyframes, options) {
+                      return {
+                          finished: Promise.resolve(),
+                          play: function() {},
+                          pause: function() {},
+                          cancel: function() {},
+                          addEventListener: function() {},
+                          removeEventListener: function() {}
+                      };
+                  };
+              }
+          
+              // ---- structuredClone (if missing)
+              if (typeof structuredClone !== 'function') {
+                  global.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); };
+              }
+          
+              // ---- BroadcastChannel (if missing)
+              if (typeof BroadcastChannel === 'undefined') {
+                  if (!global.__bcChannels) global.__bcChannels = {};
+                  global.BroadcastChannel = function(name) {
+                      this.name = name;
+                      this._listeners = [];
+                      if (!global.__bcChannels[name]) global.__bcChannels[name] = [];
+                      global.__bcChannels[name].push(this);
+                  };
+                  global.BroadcastChannel.prototype.postMessage = function(msg) {
+                      var channels = global.__bcChannels[this.name] || [];
+                      for (var i = 0; i < channels.length; i++) {
+                          if (channels[i] !== this) {
+                              channels[i]._listeners.forEach(l => l({ data: msg }));
+                          }
+                      }
+                  };
+                  global.BroadcastChannel.prototype.addEventListener = function(type, listener) {
+                      if (type === 'message') this._listeners.push(listener);
+                  };
+                  global.BroadcastChannel.prototype.removeEventListener = function(type, listener) {
+                      this._listeners = this._listeners.filter(l => l !== listener);
+                  };
+                  global.BroadcastChannel.prototype.close = function() {
+                      var arr = global.__bcChannels[this.name];
+                      if (arr) global.__bcChannels[this.name] = arr.filter(ch => ch !== this);
+                  };
+              }
+          
+              // ---- MediaSource stub (if missing)
+              if (typeof MediaSource === 'undefined') {
+                  global.MediaSource = function() {
+                      this.readyState = 'closed';
+                      this.addSourceBuffer = function() { return {}; };
+                      this.removeSourceBuffer = function() {};
+                      this.endOfStream = function() {};
+                  };
+              }
+          
+              // ---- ES2022+ array methods (if missing)
+              if (!Array.prototype.findLast) {
+                  Array.prototype.findLast = function(pred, thisArg) {
+                      for (var i = this.length-1; i >= 0; i--)
+                          if (pred.call(thisArg, this[i], i, this)) return this[i];
+                      return undefined;
+                  };
+                  Array.prototype.findLastIndex = function(pred, thisArg) {
+                      for (var i = this.length-1; i >= 0; i--)
+                          if (pred.call(thisArg, this[i], i, this)) return i;
+                      return -1;
+                  };
+              }
+              if (!Array.prototype.toReversed) Array.prototype.toReversed = function() { return this.slice().reverse(); };
+              if (!Array.prototype.toSorted) Array.prototype.toSorted = function(cmp) { return this.slice().sort(cmp); };
+              if (!Array.prototype.toSpliced) {
+                  Array.prototype.toSpliced = function(start, deleteCount, ...items) {
+                      var copy = this.slice();
+                      copy.splice(start, deleteCount, ...items);
+                      return copy;
+                  };
+              }
+              if (!Array.prototype.with) Array.prototype.with = function(idx, val) { var copy = this.slice(); copy[idx] = val; return copy; };
+          
+              console.log('[Enhanced] Modern Web APIs added (only where missing)');
+          })(window);
+          ENHANCED_EOF
+
       - name: Create loader.js
         run: |
           cat > patches/loader.js << 'LOADER_EOF'
@@ -191,238 +413,15 @@ jobs:
           })();
           LOADER_EOF
 
-      - name: Create enhanced polyfills for arena.ai (full modern Web APIs)
-        run: |
-          cat > patches/legacy-transpiler-enhanced.js << 'ENHANCED_EOF'
-          // Enhanced polyfills for iOS 15 – adds modern Web APIs (fetch, streams, web‑animations, etc.)
-          (function(global) {
-              'use strict';
-              
-              // ---- fetch with Headers/Request/Response ----
-              if (!global.fetch) {
-                  (function() {
-                      function Headers(init) {
-                          this._map = new Map();
-                          if (init) {
-                              if (init instanceof Headers) init.forEach((v,k)=>this.append(k,v));
-                              else if (Array.isArray(init)) init.forEach(([k,v])=>this.append(k,v));
-                              else Object.keys(init).forEach(k=>this.append(k,init[k]));
-                          }
-                      }
-                      Headers.prototype.append = function(k,v) { this._map.set(k.toLowerCase(), v); };
-                      Headers.prototype.delete = function(k) { this._map.delete(k.toLowerCase()); };
-                      Headers.prototype.get = function(k) { return this._map.get(k.toLowerCase()) || null; };
-                      Headers.prototype.has = function(k) { return this._map.has(k.toLowerCase()); };
-                      Headers.prototype.set = function(k,v) { this._map.set(k.toLowerCase(), v); };
-                      Headers.prototype.forEach = function(cb) { this._map.forEach((v,k)=>cb(v,k,this)); };
-                      global.Headers = Headers;
-          
-                      function Request(input, init) {
-                          this.url = typeof input === 'string' ? input : input.url;
-                          this.method = (init && init.method) || 'GET';
-                          this.headers = new Headers(init && init.headers);
-                          this.body = init && init.body;
-                      }
-                      global.Request = Request;
-          
-                      function Response(body, init) {
-                          this.status = (init && init.status) || 200;
-                          this.statusText = (init && init.statusText) || '';
-                          this.headers = new Headers(init && init.headers);
-                          this.body = body;
-                          this.ok = this.status >= 200 && this.status < 300;
-                      }
-                      global.Response = Response;
-          
-                      global.fetch = function(url, options) {
-                          return new Promise(function(resolve, reject) {
-                              var xhr = new XMLHttpRequest();
-                              xhr.open(options && options.method || 'GET', url);
-                              if (options && options.headers) {
-                                  var headers = new Headers(options.headers);
-                                  headers.forEach(function(v,k) { xhr.setRequestHeader(k, v); });
-                              }
-                              xhr.onload = function() {
-                                  resolve(new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText }));
-                              };
-                              xhr.onerror = function() { reject(new TypeError('Network request failed')); };
-                              xhr.send(options && options.body);
-                          });
-                      };
-                  })();
-              }
-          
-              // ---- AbortController ----
-              if (typeof AbortController === 'undefined') {
-                  function AbortSignal() {
-                      this.aborted = false;
-                      this._listeners = [];
-                  }
-                  AbortSignal.prototype.addEventListener = function(type, listener) {
-                      if (type === 'abort') this._listeners.push(listener);
-                  };
-                  AbortSignal.prototype.removeEventListener = function(type, listener) {
-                      this._listeners = this._listeners.filter(l => l !== listener);
-                  };
-                  AbortSignal.prototype.dispatchEvent = function() {
-                      this.aborted = true;
-                      this._listeners.forEach(l => l());
-                  };
-                  global.AbortSignal = AbortSignal;
-                  global.AbortController = function() {
-                      this.signal = new AbortSignal();
-                      this.abort = function() { this.signal.dispatchEvent(); };
-                  };
-              }
-          
-              // ---- URLPattern ----
-              if (typeof URLPattern === 'undefined') {
-                  global.URLPattern = function() {
-                      this.test = function() { return false; };
-                      this.exec = function() { return null; };
-                  };
-              }
-          
-              // ---- IntersectionObserver ----
-              if (typeof IntersectionObserver === 'undefined') {
-                  global.IntersectionObserver = function(callback) {
-                      this.observe = function(el) {
-                          setTimeout(function() {
-                              callback([{ target: el, isIntersecting: true, intersectionRatio: 1 }]);
-                          }, 0);
-                      };
-                      this.unobserve = function() {};
-                      this.disconnect = function() {};
-                  };
-              }
-          
-              // ---- ResizeObserver ----
-              if (typeof ResizeObserver === 'undefined') {
-                  global.ResizeObserver = function(callback) {
-                      this.observe = function(el) {
-                          setTimeout(function() {
-                              callback([{ target: el, contentRect: el.getBoundingClientRect() }]);
-                          }, 0);
-                      };
-                      this.unobserve = function() {};
-                      this.disconnect = function() {};
-                  };
-              }
-          
-              // ---- Web Streams (ReadableStream, etc.) ----
-              if (typeof ReadableStream === 'undefined') {
-                  global.ReadableStream = function() {
-                      this.getReader = function() {
-                          return { read: function() { return Promise.resolve({ done: true, value: undefined }); } };
-                      };
-                  };
-                  global.WritableStream = function() {
-                      this.getWriter = function() {
-                          return { write: function() {}, close: function() {} };
-                      };
-                  };
-                  global.TransformStream = function() {
-                      this.readable = new ReadableStream();
-                      this.writable = new WritableStream();
-                  };
-              }
-          
-              // ---- Web Animations API (stub) ----
-              if (!Element.prototype.animate) {
-                  Element.prototype.animate = function(keyframes, options) {
-                      return {
-                          finished: Promise.resolve(),
-                          play: function() {},
-                          pause: function() {},
-                          cancel: function() {},
-                          addEventListener: function() {},
-                          removeEventListener: function() {}
-                      };
-                  };
-              }
-          
-              // ---- structuredClone ----
-              if (typeof structuredClone !== 'function') {
-                  global.structuredClone = function(obj) { return JSON.parse(JSON.stringify(obj)); };
-              }
-          
-              // ---- BroadcastChannel ----
-              if (typeof BroadcastChannel === 'undefined') {
-                  if (!global.__bcChannels) global.__bcChannels = {};
-                  global.BroadcastChannel = function(name) {
-                      this.name = name;
-                      this._listeners = [];
-                      if (!global.__bcChannels[name]) global.__bcChannels[name] = [];
-                      global.__bcChannels[name].push(this);
-                  };
-                  global.BroadcastChannel.prototype.postMessage = function(msg) {
-                      var channels = global.__bcChannels[this.name] || [];
-                      for (var i = 0; i < channels.length; i++) {
-                          if (channels[i] !== this) {
-                              channels[i]._listeners.forEach(l => l({ data: msg }));
-                          }
-                      }
-                  };
-                  global.BroadcastChannel.prototype.addEventListener = function(type, listener) {
-                      if (type === 'message') this._listeners.push(listener);
-                  };
-                  global.BroadcastChannel.prototype.removeEventListener = function(type, listener) {
-                      this._listeners = this._listeners.filter(l => l !== listener);
-                  };
-                  global.BroadcastChannel.prototype.close = function() {
-                      var arr = global.__bcChannels[this.name];
-                      if (arr) global.__bcChannels[this.name] = arr.filter(ch => ch !== this);
-                  };
-              }
-          
-              // ---- MediaSource (stub for video streaming) ----
-              if (typeof MediaSource === 'undefined') {
-                  global.MediaSource = function() {
-                      this.readyState = 'closed';
-                      this.addSourceBuffer = function() { return {}; };
-                      this.removeSourceBuffer = function() {};
-                      this.endOfStream = function() {};
-                  };
-              }
-          
-              // ---- Additional ES2022+ array methods ----
-              if (!Array.prototype.findLast) {
-                  Array.prototype.findLast = function(pred, thisArg) {
-                      for (var i = this.length-1; i >= 0; i--)
-                          if (pred.call(thisArg, this[i], i, this)) return this[i];
-                      return undefined;
-                  };
-                  Array.prototype.findLastIndex = function(pred, thisArg) {
-                      for (var i = this.length-1; i >= 0; i--)
-                          if (pred.call(thisArg, this[i], i, this)) return i;
-                      return -1;
-                  };
-              }
-              if (!Array.prototype.toReversed) Array.prototype.toReversed = function() { return this.slice().reverse(); };
-              if (!Array.prototype.toSorted) Array.prototype.toSorted = function(cmp) { return this.slice().sort(cmp); };
-              if (!Array.prototype.toSpliced) {
-                  Array.prototype.toSpliced = function(start, deleteCount, ...items) {
-                      var copy = this.slice();
-                      copy.splice(start, deleteCount, ...items);
-                      return copy;
-                  };
-              }
-              if (!Array.prototype.with) Array.prototype.with = function(idx, val) { var copy = this.slice(); copy[idx] = val; return copy; };
-          
-              console.log('[Enhanced] Modern Web APIs loaded for arena.ai');
-          })(window);
-          ENHANCED_EOF
-
-      - name: Verify legacy-transpiler.js exists (your 274KB file)
+      - name: Verify legacy-transpiler.js exists
         run: |
           if [ ! -f patches/legacy-transpiler.js ]; then
             echo "ERROR: patches/legacy-transpiler.js not found!"
-            echo "You MUST upload your 274KB legacy-transpiler.js file to the patches/ folder"
             exit 1
           fi
-          echo "legacy-transpiler.js found. Size: $(wc -c < patches/legacy-transpiler.js) bytes"
+          echo "legacy-transpiler.js found"
 
-      - name: Create app bundle and copy all JS files
+      - name: Create app bundle and copy JS files
         run: |
           APP_NAME="Modernize"
           mkdir -p Payload/${APP_NAME}.app
@@ -430,10 +429,9 @@ jobs:
           cp patches/legacy-transpiler-enhanced.js Payload/${APP_NAME}.app/
           cp patches/legacy-transpiler.js Payload/${APP_NAME}.app/
           cp patches/loader.js Payload/${APP_NAME}.app/
-          echo "JS files copied:"
-          ls -la Payload/${APP_NAME}.app/*.js
+          echo "JS files copied"
 
-      - name: Generate Swift source (full UI, no full-screen swipe, loads 4 JS files)
+      - name: Generate Swift source (no full-screen swipe, transparent toolbar)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -445,7 +443,7 @@ jobs:
           struct HistoryEntry: Codable { var id = UUID(); var title: String; var url: String; var date: Date }
           struct TabState: Codable { var id = UUID(); var title: String; var url: String; var isPrivate: Bool }
 
-          // MARK: - Managers (UserAgent, History, Bookmark, Download)
+          // MARK: - Managers
           class UserAgentManager {
               static let shared = UserAgentManager()
               private let defaults = UserDefaults.standard
@@ -483,9 +481,7 @@ jobs:
               func userAgentForURL(_ url: URL?) -> String {
                   guard let host = url?.host?.lowercased() else { return currentMode.userAgentString }
                   if host.contains("accounts.google.com") { return UAMode.googleFix.userAgentString }
-                  if currentMode == .custom {
-                      return customUA.isEmpty ? UAMode.ios26.userAgentString : customUA
-                  }
+                  if currentMode == .custom { return customUA.isEmpty ? UAMode.ios26.userAgentString : customUA }
                   return currentMode.userAgentString
               }
           }
@@ -1130,5 +1126,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-Final-IPA
+          name: Modernize-Final-Working
           path: Modernize.ipa

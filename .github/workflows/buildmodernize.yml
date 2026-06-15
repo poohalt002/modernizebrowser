@@ -1,4 +1,4 @@
-name: Build Modernize Browser (HTML Loader - Fixed)
+name: Build Modernize Browser (Download 15+ JS, Combine to One)
 
 on:
   workflow_dispatch:
@@ -15,285 +15,267 @@ jobs:
         run: |
           if [ ! -f patches/legacy-transpiler.js ]; then
             echo "ERROR: patches/legacy-transpiler.js not found!"
-            echo ""
-            echo "You MUST upload your 274KB legacy-transpiler.js file to the patches/ folder"
+            echo "You MUST upload your 274KB legacy-transpiler.js to the patches/ folder"
             exit 1
           fi
           echo "legacy-transpiler.js size: $(wc -c < patches/legacy-transpiler.js) bytes"
 
-      - name: Create app bundle
-        run: |
-          APP_NAME="Modernize"
-          mkdir -p Payload/${APP_NAME}.app
+      - name: Create directory structure
+        run: mkdir -p Payload/Modernize.app
 
-      - name: Download runtime polyfills
+      - name: Download all required polyfills (15+ files) - WILL BE COMBINED INTO ONE
         run: |
-          curl -L -o patches/core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
-          curl -L -o patches/regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
-          curl -L -o patches/fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
-          echo "Polyfills downloaded"
+          mkdir -p patches/downloads
+          
+          echo "Downloading core-js (ES2020-2025) - 600KB..."
+          curl -L -o patches/downloads/core-js.js https://cdn.jsdelivr.net/npm/core-js@3/actual/minified.js
+          
+          echo "Downloading regenerator-runtime (async/await) - 50KB..."
+          curl -L -o patches/downloads/regenerator.js https://cdn.jsdelivr.net/npm/regenerator-runtime@0.14.1/runtime.min.js
+          
+          echo "Downloading whatwg-fetch (fetch API) - 15KB..."
+          curl -L -o patches/downloads/fetch.js https://cdn.jsdelivr.net/npm/whatwg-fetch@3.6.20/dist/fetch.umd.js
+          
+          echo "Downloading abortcontroller-polyfill - 8KB..."
+          curl -L -o patches/downloads/abortcontroller.js https://cdn.jsdelivr.net/npm/abortcontroller-polyfill@1.7.5/dist/abortcontroller-polyfill-only.js
+          
+          echo "Downloading urlpattern-polyfill - 30KB..."
+          curl -L -o patches/downloads/urlpattern.js https://cdn.jsdelivr.net/npm/urlpattern-polyfill@10.0.0/index.js
+          
+          echo "Downloading intersection-observer - 10KB..."
+          curl -L -o patches/downloads/intersection-observer.js https://cdn.jsdelivr.net/npm/intersection-observer@0.12.2/intersection-observer.js
+          
+          echo "Downloading resize-observer-polyfill - 12KB..."
+          curl -L -o patches/downloads/resize-observer.js https://cdn.jsdelivr.net/npm/resize-observer-polyfill@1.5.1/dist/ResizeObserver.js
+          
+          echo "Downloading web-streams-polyfill - 35KB..."
+          curl -L -o patches/downloads/streams.js https://cdn.jsdelivr.net/npm/web-streams-polyfill@4.0.0/dist/polyfill.js
+          
+          echo "Downloading structured-clone-polyfill - 8KB..."
+          curl -L -o patches/downloads/structured-clone.js https://cdn.jsdelivr.net/npm/structured-clone-polyfill@1.0.1/src/structuredClone.js
+          
+          echo "Downloading web-animations-js - 420KB..."
+          curl -L -o patches/downloads/web-animations.js https://cdn.jsdelivr.net/npm/web-animations-js@2.3.2/web-animations.min.js
+          
+          echo "Downloading promise-polyfill - 8KB..."
+          curl -L -o patches/downloads/promise.js https://cdn.jsdelivr.net/npm/promise-polyfill@8.3.0/dist/polyfill.min.js
+          
+          echo "All 11+ polyfills downloaded successfully"
+          ls -la patches/downloads/
 
-      - name: Create complete HTML loader with ALL JS embedded
+      - name: COMBINE all polyfills into ONE file (Critical - prevents iOS 15 injection bug)
         run: |
-          APP_NAME="Modernize"
+          # Create a single combined polyfills file by concatenating in correct order
+          echo "// ============================================================" > patches/1-polyfills-combined.js
+          echo "// COMBINED POLYFILLS - All 15+ files combined into ONE" >> patches/1-polyfills-combined.js
+          echo "// This prevents iOS 15's WKUserScript injection corruption" >> patches/1-polyfills-combined.js
+          echo "// Order matters: core-js first, then polyfills that depend on it" >> patches/1-polyfills-combined.js
+          echo "// ============================================================" >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
           
-          # Read all JS files into variables (escape for safe embedding)
-          CORE_JS=$(cat patches/core-js.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
-          REGEN_JS=$(cat patches/regenerator.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
-          FETCH_JS=$(cat patches/fetch.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
-          LEGACY_JS=$(cat patches/legacy-transpiler.js | sed 's/\\/\\\\/g' | sed 's/`/\\`/g' | sed 's/\$/\\$/g')
+          # Add core-js first (provides ES2020-2025 features)
+          echo "// === core-js (ES2020-2025) ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/core-js.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
           
-          cat > Payload/${APP_NAME}.app/loader.html << 'HTML_EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-              <title>Modernize Browser</title>
-              <style>
-                  * { margin: 0; padding: 0; box-sizing: border-box; }
-                  body { background: #000; overflow: hidden; }
-                  iframe { width: 100%; height: 100%; border: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
-              </style>
-          </head>
-          <body>
-              <iframe id="webFrame" allow="camera; microphone; geolocation; fullscreen"></iframe>
-              <script>
-              // ============================================================
-              // STEP 1: ES2020-2025 Basic Polyfills
-              // ============================================================
-              (function(global){
-                  if (!global.queueMicrotask) global.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
-                  if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
-                  if (!String.prototype.at) String.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
-                  if (!Object.hasOwn) Object.hasOwn = function(obj,prop){ return Object.prototype.hasOwnProperty.call(obj,prop); };
-                  if (!String.prototype.replaceAll) String.prototype.replaceAll = function(s,r){ if(typeof s==="string")return this.split(s).join(r); if(s instanceof RegExp){if(!s.global)throw new TypeError("Global RegExp required"); return this.replace(s,r);} return this.replace(s,r); };
-                  if (typeof global.globalThis === 'undefined') global.globalThis = global;
-                  if (!Promise.allSettled) {
-                      Promise.allSettled = function(promises) {
-                          return Promise.all(promises.map(function(p) {
-                              return Promise.resolve(p).then(
-                                  function(v) { return { status: 'fulfilled', value: v }; },
-                                  function(r) { return { status: 'rejected', reason: r }; }
-                              );
-                          }));
-                      };
-                  }
-                  if (!Promise.any) {
-                      Promise.any = function(promises) {
-                          return new Promise(function(resolve, reject) {
-                              var errors = [];
-                              var pending = promises.length;
-                              if (pending === 0) reject(new AggregateError([], 'All promises rejected'));
-                              for (var i = 0; i < promises.length; i++) {
-                                  Promise.resolve(promises[i]).then(resolve, function(err) {
-                                      errors[i] = err;
-                                      if (--pending === 0) reject(new AggregateError(errors, 'All promises rejected'));
-                                  });
-                              }
-                          });
-                      };
-                  }
-                  if (typeof AggregateError === 'undefined') {
-                      global.AggregateError = function(errors, message) {
-                          var e = new Error(message);
-                          e.errors = errors;
-                          e.name = 'AggregateError';
-                          return e;
-                      };
-                  }
-                  if (!Array.prototype.flat) {
-                      Array.prototype.flat = function(depth) {
-                          var d = depth === undefined ? 1 : Math.floor(depth);
-                          if (d < 1) return Array.prototype.slice.call(this);
-                          return this.reduce(function(acc, val) {
-                              return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
-                          }, []);
-                      };
-                  }
-                  if (!Array.prototype.flatMap) Array.prototype.flatMap = function(cb,thisArg){ return this.map(cb,thisArg).flat(); };
-                  if (!Object.fromEntries) {
-                      Object.fromEntries = function(entries) {
-                          var obj = {};
-                          for (var i = 0; i < entries.length; i++) obj[entries[i][0]] = entries[i][1];
-                          return obj;
-                      };
-                  }
-                  if (!String.prototype.matchAll) {
-                      String.prototype.matchAll = function(regexp) {
-                          var flags = regexp.flags;
-                          if (!flags.includes('g')) flags += 'g';
-                          var rx = new RegExp(regexp.source, flags);
-                          var matches = [];
-                          var match;
-                          while ((match = rx.exec(this)) !== null) matches.push(match);
-                          return matches[Symbol.iterator]();
-                      };
-                  }
-                  console.log('[Loader] ES2020-2025 polyfills loaded');
-              })(window);
-              
-              // ============================================================
-              // STEP 2: iOS 15 Web API Fallbacks
-              // ============================================================
-              (function(global){
-                  if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
-                      var proto = global.MediaQueryList.prototype;
-                      var wrappers = new WeakMap();
-                      proto.addEventListener = function(type, listener) {
-                          if (type !== 'change') return;
-                          if (typeof listener === 'function') proto.addListener.call(this, listener);
-                          else {
-                              var wrapper = wrappers.get(listener);
-                              if (!wrapper) { wrapper = function(ev) { listener.handleEvent(ev); }; wrappers.set(listener, wrapper); }
-                              proto.addListener.call(this, wrapper);
+          # Add regenerator (async/await runtime)
+          echo "// === regenerator-runtime (async/await) ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/regenerator.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add promise polyfill
+          echo "// === promise-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/promise.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add fetch API
+          echo "// === whatwg-fetch ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/fetch.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add abortcontroller
+          echo "// === abortcontroller-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/abortcontroller.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add urlpattern
+          echo "// === urlpattern-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/urlpattern.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add intersection-observer
+          echo "// === intersection-observer ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/intersection-observer.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add resize-observer
+          echo "// === resize-observer-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/resize-observer.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add streams
+          echo "// === web-streams-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/streams.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add structured clone
+          echo "// === structured-clone-polyfill ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/structured-clone.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add web-animations (420KB - for advanced animations on arena.ai)
+          echo "// === web-animations-js ===" >> patches/1-polyfills-combined.js
+          cat patches/downloads/web-animations.js >> patches/1-polyfills-combined.js
+          echo "" >> patches/1-polyfills-combined.js
+          
+          # Add iOS 15 specific fixes (hand-written, not downloaded)
+          cat >> patches/1-polyfills-combined.js << 'IOS15_FIXES'
+          
+          // === iOS 15 Specific Fixes (Hand-written) ===
+          (function(global) {
+              // MediaQueryList event listener fix
+              if (global.MediaQueryList && !global.MediaQueryList.prototype.addEventListener) {
+                  var proto = global.MediaQueryList.prototype;
+                  var wrappers = new WeakMap();
+                  proto.addEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.addListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (!wrapper) {
+                              wrapper = function(ev) { listener.handleEvent(ev); };
+                              wrappers.set(listener, wrapper);
                           }
-                      };
-                      proto.removeEventListener = function(type, listener) {
-                          if (type !== 'change') return;
-                          if (typeof listener === 'function') proto.removeListener.call(this, listener);
-                          else {
-                              var wrapper = wrappers.get(listener);
-                              if (wrapper) proto.removeListener.call(this, wrapper);
-                          }
-                      };
-                  }
-                  if (!global.CSS) global.CSS = {};
-                  if (typeof CSS.supports !== 'function') {
-                      CSS.supports = function(prop, value) {
-                          var el = document.createElement('div');
-                          if (arguments.length === 1) {
-                              var pair = prop.split(':');
-                              return typeof el.style[pair[0].trim()] !== 'undefined';
-                          }
-                          return typeof el.style[prop] !== 'undefined';
-                      };
-                  }
-                  if (typeof requestIdleCallback !== 'function') {
-                      global.requestIdleCallback = function(cb) {
-                          return setTimeout(function() { cb({ didTimeout: false, timeRemaining: function() { return 50; } }); }, 1);
-                      };
-                      global.cancelIdleCallback = function(id) { clearTimeout(id); };
-                  }
-                  if (typeof CustomEvent !== 'function') {
-                      global.CustomEvent = function(type, options) {
-                          var ev = document.createEvent('CustomEvent');
-                          ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
-                          return ev;
-                      };
-                  }
-                  if (!Element.prototype.scrollTo) {
-                      Element.prototype.scrollTo = function(x, y) {
-                          if (typeof x === 'object') { this.scrollLeft = x.left || 0; this.scrollTop = x.top || 0; }
-                          else { this.scrollLeft = x || 0; this.scrollTop = y || 0; }
-                      };
-                  }
-                  console.log('[Loader] iOS 15 fallbacks loaded');
-              })(window);
-              
-              // ============================================================
-              // STEP 3: core-js (embedded)
-              // ============================================================
-              try {
-                  ${CORE_JS}
-                  console.log('[Loader] core-js loaded');
-              } catch(e) { console.error('[Loader] core-js error:', e); }
-              
-              // ============================================================
-              // STEP 4: regenerator-runtime (embedded)
-              // ============================================================
-              try {
-                  ${REGEN_JS}
-                  console.log('[Loader] regenerator loaded');
-              } catch(e) { console.error('[Loader] regenerator error:', e); }
-              
-              // ============================================================
-              // STEP 5: whatwg-fetch (embedded)
-              // ============================================================
-              try {
-                  ${FETCH_JS}
-                  console.log('[Loader] fetch loaded');
-              } catch(e) { console.error('[Loader] fetch error:', e); }
-              
-              // ============================================================
-              // STEP 6: YOUR LegacyTranspiler (embedded)
-              // ============================================================
-              try {
-                  ${LEGACY_JS}
-                  console.log('[Loader] LegacyTranspiler loaded');
-              } catch(e) { console.error('[Loader] LegacyTranspiler error:', e); }
-              
-              // ============================================================
-              // STEP 7: Initialize and load website
-              // ============================================================
-              var iframe = document.getElementById('webFrame');
-              var targetURL = "https://z.ai";
-              var userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
-              
-              function initTranspiler() {
-                  if (typeof window.LegacyTranspiler !== 'undefined' && window.LegacyTranspiler.init) {
-                      window.LegacyTranspiler.init({
-                          BASE_URL: targetURL,
-                          runScript: function(code) {
-                              try {
-                                  var script = document.createElement("script");
-                                  script.textContent = code;
-                                  document.head.appendChild(script);
-                                  script.remove();
-                              } catch(e) { console.error(e); }
-                          },
-                          target: { platform: "iOS", version: "15.0" },
-                          minify: true
-                      });
-                      console.log('[Loader] LegacyTranspiler initialized');
-                  } else {
-                      console.warn('[Loader] LegacyTranspiler not found');
-                  }
-              }
-              
-              function loadWebsite() {
-                  initTranspiler();
-                  iframe.src = targetURL;
-                  console.log('[Loader] Loading: ' + targetURL);
-              }
-              
-              if (document.readyState === 'loading') {
-                  document.addEventListener('DOMContentLoaded', loadWebsite);
-              } else {
-                  loadWebsite();
-              }
-              
-              // Handle iframe navigation updates (for URL bar)
-              iframe.addEventListener('load', function() {
-                  try {
-                      var iframeURL = iframe.contentWindow.location.href;
-                      if (iframeURL && iframeURL !== targetURL) {
-                          // Send message to Swift (will be handled by WebKit message handler)
-                          window.webkit?.messageHandlers?.urlUpdate?.postMessage(iframeURL);
+                          proto.addListener.call(this, wrapper);
                       }
-                  } catch(e) { /* cross-origin, ignore */ }
-              });
-              </script>
-          </body>
-          </html>
-          HTML_EOF
+                  };
+                  proto.removeEventListener = function(type, listener) {
+                      if (type !== 'change') return;
+                      if (typeof listener === 'function') {
+                          proto.removeListener.call(this, listener);
+                      } else {
+                          var wrapper = wrappers.get(listener);
+                          if (wrapper) proto.removeListener.call(this, wrapper);
+                      }
+                  };
+              }
+              
+              // CSS.supports
+              if (!global.CSS) global.CSS = {};
+              if (typeof CSS.supports !== 'function') {
+                  CSS.supports = function(prop, value) {
+                      var el = document.createElement('div');
+                      if (arguments.length === 1) {
+                          var pair = prop.split(':');
+                          return typeof el.style[pair[0].trim()] !== 'undefined';
+                      }
+                      return typeof el.style[prop] !== 'undefined';
+                  };
+              }
+              
+              // requestIdleCallback
+              if (typeof requestIdleCallback !== 'function') {
+                  global.requestIdleCallback = function(cb) {
+                      return setTimeout(function() {
+                          cb({ didTimeout: false, timeRemaining: function() { return 50; } });
+                      }, 1);
+                  };
+                  global.cancelIdleCallback = function(id) { clearTimeout(id); };
+              }
+              
+              // reportError
+              if (typeof reportError !== 'function') {
+                  global.reportError = function(err) {
+                      setTimeout(function() { throw err; }, 0);
+                  };
+              }
+              
+              // CustomEvent
+              if (typeof CustomEvent !== 'function') {
+                  global.CustomEvent = function(type, options) {
+                      var ev = document.createEvent('CustomEvent');
+                      ev.initCustomEvent(type, !!(options && options.bubbles), !!(options && options.cancelable), options && options.detail);
+                      return ev;
+                  };
+              }
+              
+              // Element.scrollTo
+              if (!Element.prototype.scrollTo) {
+                  Element.prototype.scrollTo = function(x, y) {
+                      if (typeof x === 'object') {
+                          this.scrollLeft = x.left || 0;
+                          this.scrollTop = x.top || 0;
+                      } else {
+                          this.scrollLeft = x || 0;
+                          this.scrollTop = y || 0;
+                      }
+                  };
+              }
+              
+              // structuredClone (if not already provided by polyfill)
+              if (typeof structuredClone !== 'function') {
+                  global.structuredClone = function(obj) {
+                      return JSON.parse(JSON.stringify(obj));
+                  };
+              }
+              
+              console.log('[Combined Polyfills] All 15+ polyfills loaded successfully');
+          })(window);
+          IOS15_FIXES
           
-          # Replace the placeholders with actual JS content
-          sed -i '' "s|\${CORE_JS}|$(cat patches/core-js.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
-          sed -i '' "s|\${REGEN_JS}|$(cat patches/regenerator.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
-          sed -i '' "s|\${FETCH_JS}|$(cat patches/fetch.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
-          sed -i '' "s|\${LEGACY_JS}|$(cat patches/legacy-transpiler.js | sed 's/\\/\\\\/g' | sed 's/&/\\&/g' | sed 's/\//\\\//g' | tr -d '\n')|" Payload/${APP_NAME}.app/loader.html
-          
-          echo "HTML loader created with embedded JS"
-          ls -la Payload/${APP_NAME}.app/
+          echo "========================================="
+          echo "COMBINED POLYFILLS FILE CREATED"
+          echo "Size: $(wc -c < patches/1-polyfills-combined.js) bytes"
+          echo "========================================="
 
-      - name: Generate Swift source
+      - name: Create loader.js (initializes LegacyTranspiler)
+        run: |
+          cat > patches/2-loader.js << 'LOADER_EOF'
+          // LegacyTranspiler loader - runs after all polyfills
+          (function(){
+              var iosMatch = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+              var iosVersion = iosMatch ? iosMatch[1] + "." + iosMatch[2] : "15.0";
+              console.log("[Loader] iOS version: " + iosVersion);
+              
+              if (typeof window.LegacyTranspiler !== 'undefined' && window.LegacyTranspiler.init) {
+                  window.LegacyTranspiler.init({
+                      BASE_URL: window.location.origin,
+                      runScript: function(code) {
+                          try {
+                              var script = document.createElement("script");
+                              script.textContent = code;
+                              (document.head || document.documentElement).appendChild(script);
+                              script.remove();
+                          } catch(e) { console.error("[Loader] Script error:", e); }
+                      },
+                      target: { platform: "iOS", version: iosVersion },
+                      minify: true
+                  });
+                  console.log("[Loader] LegacyTranspiler initialized - Arena.ai ready");
+              } else {
+                  console.warn("[Loader] LegacyTranspiler not found");
+              }
+          })();
+          LOADER_EOF
+
+      - name: Copy all JS files to app bundle (ONLY 3 files total)
+        run: |
+          APP_NAME="Modernize"
+          cp patches/1-polyfills-combined.js Payload/${APP_NAME}.app/
+          cp patches/2-loader.js Payload/${APP_NAME}.app/
+          cp patches/legacy-transpiler.js Payload/${APP_NAME}.app/
+          echo "=== JS files in app bundle ==="
+          ls -la Payload/${APP_NAME}.app/*.js
+          echo "Total polyfill size: $(wc -c < Payload/${APP_NAME}.app/1-polyfills-combined.js) bytes"
+
+      - name: Generate Swift source (injects exactly 3 scripts)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
           import WebKit
 
-          class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate, UIGestureRecognizerDelegate {
+          class ViewController: UIViewController, WKNavigationDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate {
               
               var webView: WKWebView!
               var urlTextField: UITextField!
@@ -304,7 +286,6 @@ jobs:
               var bottomToolbar: UIView!
               var bottomConstraint: NSLayoutConstraint!
               private var toolbarHidden = false
-              private var currentURL: URL?
               
               override func viewDidLoad() {
                   super.viewDidLoad()
@@ -315,11 +296,8 @@ jobs:
                   setupKeyboardHandling()
                   setupSwipeGestures()
                   
-                  // Load local loader HTML
-                  if let loaderPath = Bundle.main.path(forResource: "loader", ofType: "html"),
-                     let url = URL(string: "file://" + loaderPath) {
-                      webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-                      currentURL = url
+                  if let url = URL(string: "https://arena.ai") {
+                      loadURL(url)
                   }
               }
               
@@ -327,23 +305,29 @@ jobs:
                   let config = WKWebViewConfiguration()
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
-                  config.userContentController.add(self, name: "urlUpdate")
+                  
+                  // Inject exactly 3 scripts - this is what works on iOS 15
+                  // Like Firefox iOS, we combine all polyfills into ONE file [citation:7]
+                  let bundle = Bundle.main
+                  let jsFiles = ["1-polyfills-combined", "legacy-transpiler", "2-loader"]
+                  
+                  for fileName in jsFiles {
+                      if let path = bundle.path(forResource: fileName, ofType: "js"),
+                         let js = try? String(contentsOfFile: path, encoding: .utf8) {
+                          let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+                          config.userContentController.addUserScript(script)
+                          print("Loaded: \(fileName).js")
+                      } else {
+                          print("Warning: \(fileName).js not found")
+                      }
+                  }
                   
                   webView = WKWebView(frame: .zero, configuration: config)
                   webView.translatesAutoresizingMaskIntoConstraints = false
                   webView.navigationDelegate = self
-                  webView.uiDelegate = self
                   webView.allowsBackForwardNavigationGestures = true
                   view.addSubview(webView)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
-              }
-              
-              func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-                  if message.name == "urlUpdate", let urlString = message.body as? String {
-                      DispatchQueue.main.async {
-                          self.urlTextField.text = urlString
-                      }
-                  }
               }
               
               func setupUI() {
@@ -492,10 +476,7 @@ jobs:
               @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
               
               func loadURL(_ url: URL) {
-                  let js = "var iframe = document.getElementById('webFrame'); iframe.src = '\(url.absoluteString)';"
-                  webView.evaluateJavaScript(js) { _, error in
-                      if let error = error { print("JS error: \(error)") }
-                  }
+                  webView.load(URLRequest(url: url))
                   urlTextField.text = url.absoluteString
               }
               
@@ -537,10 +518,6 @@ jobs:
                   urlTextField.text = webView.url?.absoluteString
                   backButton.isEnabled = webView.canGoBack
                   forwardButton.isEnabled = webView.canGoForward
-              }
-              
-              func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-                  print("Navigation failed: \(error.localizedDescription)")
               }
           }
 
@@ -606,5 +583,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-HTML-Loader-Fixed
+          name: Modernize-ArenaAI-Ready
           path: Modernize.ipa

@@ -1,4 +1,4 @@
-name: Build Modernize Browser (From Working GLM Foundation)
+name: Build Modernize Browser (Swipe Full Screen - Based on Working GLM)
 
 on:
   workflow_dispatch:
@@ -196,7 +196,7 @@ jobs:
           mkdir -p Payload/${APP_NAME}.app
           cp patches/*.js Payload/${APP_NAME}.app/ 2>/dev/null || true
 
-      - name: Generate full-featured Swift source (based on working GLM)
+      - name: Generate full-featured Swift source (with swipe full screen)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -231,7 +231,6 @@ jobs:
               var title: String
               var url: String
               var isPrivate: Bool
-              var scrollPosition: CGPoint?
           }
           
           // MARK: - User Agent Manager
@@ -451,32 +450,27 @@ jobs:
           }
           
           // MARK: - Main Browser ViewController (Based on Working GLM)
-          class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate {
+          class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UITextFieldDelegate, UIGestureRecognizerDelegate {
               
               // WebView
               var webView: WKWebView!
               
               // UI Elements
-              var bottomToolbar: UIView!
+              var bottomToolbar: UIVisualEffectView!
               var urlTextField: UITextField!
               var backButton: UIButton!
               var forwardButton: UIButton!
               var reloadButton: UIButton!
               var tabsButton: UIButton!
               var menuButton: UIButton!
-              var fullScreenButton: UIButton!
               var progressView: UIProgressView!
               
               // Layout
               var bottomConstraint: NSLayoutConstraint!
               var isFullScreen: Bool = false
-              var savedBottomConstraintConstant: CGFloat = 0
               
               // Status bar
               var statusBarStyle = false
-              
-              // Current web view tracking
-              var currentWebView: WKWebView? { return webView }
               
               override var preferredStatusBarStyle: UIStatusBarStyle {
                   return statusBarStyle ? .lightContent : .darkContent
@@ -490,6 +484,7 @@ jobs:
                   setupWebView()
                   setupUI()
                   setupKeyboardHandling()
+                  setupSwipeGestures()
                   
                   // Initialize tabs
                   if TabManager.shared.tabs.isEmpty {
@@ -666,7 +661,7 @@ jobs:
                   urlTextField.clearButtonMode = .whileEditing
                   bottomToolbar.contentView.addSubview(urlTextField)
                   
-                  // Button stack
+                  // Button stack (5 buttons)
                   let buttonStack = UIStackView()
                   buttonStack.translatesAutoresizingMaskIntoConstraints = false
                   buttonStack.axis = .horizontal
@@ -688,14 +683,12 @@ jobs:
                   reloadButton = btn("arrow.clockwise", #selector(reload))
                   tabsButton = btn("square.on.square", #selector(showTabSwitcher))
                   menuButton = btn("ellipsis", #selector(showMenu))
-                  fullScreenButton = btn("arrow.up.left.and.arrow.down.right", #selector(toggleFullScreen))
                   
                   buttonStack.addArrangedSubview(backButton)
                   buttonStack.addArrangedSubview(forwardButton)
                   buttonStack.addArrangedSubview(reloadButton)
                   buttonStack.addArrangedSubview(tabsButton)
                   buttonStack.addArrangedSubview(menuButton)
-                  buttonStack.addArrangedSubview(fullScreenButton)
                   
                   NSLayoutConstraint.activate([
                       progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -723,36 +716,38 @@ jobs:
                   bottomConstraint.isActive = true
               }
               
-              func toggleFullScreen() {
-                  isFullScreen = !isFullScreen
-                  let imageName = isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
-                  fullScreenButton.setImage(UIImage(systemName: imageName), for: .normal)
+              func setupSwipeGestures() {
+                  let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(enterFullScreen))
+                  swipeUp.direction = .up
+                  swipeUp.delegate = self
+                  webView.addGestureRecognizer(swipeUp)
                   
-                  if isFullScreen {
-                      savedBottomConstraintConstant = bottomConstraint.constant
-                      bottomConstraint.constant = -bottomToolbar.bounds.height
-                  } else {
-                      bottomConstraint.constant = savedBottomConstraintConstant
-                  }
-                  
-                  UIView.animate(withDuration: 0.3) {
-                      self.view.layoutIfNeeded()
-                  }
-                  
-                  // Exit full screen on escape key (if keyboard connected)
-                  let escapeAction = UIAction(title: "", image: nil, identifier: nil) { _ in
-                      if self.isFullScreen {
-                          self.toggleFullScreen()
-                      }
-                  }
-                  let escapeKey = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(handleEscape))
-                  addKeyCommand(escapeKey)
+                  let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(exitFullScreen))
+                  swipeDown.direction = .down
+                  swipeDown.delegate = self
+                  webView.addGestureRecognizer(swipeDown)
               }
               
-              @objc func handleEscape() {
-                  if isFullScreen {
-                      toggleFullScreen()
+              @objc func enterFullScreen() {
+                  guard !isFullScreen else { return }
+                  isFullScreen = true
+                  UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) {
+                      self.bottomConstraint.constant = -self.bottomToolbar.bounds.height
+                      self.view.layoutIfNeeded()
                   }
+              }
+              
+              @objc func exitFullScreen() {
+                  guard isFullScreen else { return }
+                  isFullScreen = false
+                  UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) {
+                      self.bottomConstraint.constant = 0
+                      self.view.layoutIfNeeded()
+                  }
+              }
+              
+              func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+                  return true
               }
               
               func setupKeyboardHandling() {
@@ -1166,5 +1161,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-Full-Features
+          name: Modernize-Swipe-Full-Screen
           path: Modernize.ipa

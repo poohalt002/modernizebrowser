@@ -1,4 +1,4 @@
-name: Build Modernize Browser (Exactly Like GLM - 3 Files)
+name: Build Modernize Browser (z.ai Fix - Real User Agent)
 
 on:
   workflow_dispatch:
@@ -14,10 +14,9 @@ jobs:
       - name: Create patches folder
         run: mkdir -p patches
 
-      - name: Create polyfills.js (GLM style - minimal, proven to work)
+      - name: Create polyfills.js
         run: |
           cat > patches/polyfills.js << 'POLYFILLS_EOF'
-          // Basic polyfills that GLM used successfully
           (function(global){
               if (!global.queueMicrotask) global.queueMicrotask = function(cb){ Promise.resolve().then(cb); };
               if (!Array.prototype.at) Array.prototype.at = function(idx){ var len=this.length,i=idx>=0?idx:len+idx; return (i<0||i>=len)?undefined:this[i]; };
@@ -58,39 +57,11 @@ jobs:
                       return e;
                   };
               }
-              if (!Array.prototype.flat) {
-                  Array.prototype.flat = function(depth) {
-                      var d = depth === undefined ? 1 : Math.floor(depth);
-                      if (d < 1) return Array.prototype.slice.call(this);
-                      return this.reduce(function(acc, val) {
-                          return acc.concat(Array.isArray(val) ? val.flat(d - 1) : val);
-                      }, []);
-                  };
-              }
-              if (!Array.prototype.flatMap) Array.prototype.flatMap = function(cb,thisArg){ return this.map(cb,thisArg).flat(); };
-              if (!Object.fromEntries) {
-                  Object.fromEntries = function(entries) {
-                      var obj = {};
-                      for (var i = 0; i < entries.length; i++) obj[entries[i][0]] = entries[i][1];
-                      return obj;
-                  };
-              }
-              if (!String.prototype.matchAll) {
-                  String.prototype.matchAll = function(regexp) {
-                      var flags = regexp.flags;
-                      if (!flags.includes('g')) flags += 'g';
-                      var rx = new RegExp(regexp.source, flags);
-                      var matches = [];
-                      var match;
-                      while ((match = rx.exec(this)) !== null) matches.push(match);
-                      return matches[Symbol.iterator]();
-                  };
-              }
               console.log('[Polyfills] Loaded');
           })(window);
           POLYFILLS_EOF
 
-      - name: Create loader.js (GLM style)
+      - name: Create loader.js
         run: |
           cat > patches/loader.js << 'LOADER_EOF'
           (function(){
@@ -104,47 +75,39 @@ jobs:
                           try {
                               var script = document.createElement("script");
                               script.textContent = code;
-                              (document.head || document.documentElement).appendChild(script);
+                              document.head.appendChild(script);
                               script.remove();
                           } catch(e) { console.error(e); }
                       },
                       target: { platform: "iOS", version: iosVersion },
                       minify: true
                   });
+                  console.log("LegacyTranspiler initialized");
+              } else {
+                  console.warn("LegacyTranspiler not found");
               }
           })();
           LOADER_EOF
 
-      - name: Verify legacy-transpiler.js exists (YOUR 274KB FILE)
+      - name: Verify legacy-transpiler.js exists
         run: |
           if [ ! -f patches/legacy-transpiler.js ]; then
             echo "ERROR: patches/legacy-transpiler.js not found!"
-            echo ""
-            echo "You MUST upload your 274KB legacy-transpiler.js file to the patches/ folder"
-            echo "in your repository before running this workflow."
+            echo "You MUST upload your 274KB legacy-transpiler.js to the patches/ folder"
             exit 1
           fi
           echo "legacy-transpiler.js found. Size: $(wc -c < patches/legacy-transpiler.js) bytes"
 
-      - name: Create app bundle and copy exactly 3 JS files
+      - name: Create app bundle
         run: |
           APP_NAME="Modernize"
           mkdir -p Payload/${APP_NAME}.app
-          
-          # Copy exactly 3 files - just like GLM
           cp patches/polyfills.js Payload/${APP_NAME}.app/
           cp patches/legacy-transpiler.js Payload/${APP_NAME}.app/
           cp patches/loader.js Payload/${APP_NAME}.app/
-          
-          echo "=== JS files in app bundle ==="
-          ls -la Payload/${APP_NAME}.app/*.js
-          
-          # Copy icons if present
-          for icon in Icon-60@2x.png Icon-60@3x.png Icon-76.png Icon-76@2x.png; do
-            if [ -f "$icon" ]; then cp "$icon" Payload/${APP_NAME}.app/; fi
-          done
+          echo "JS files copied"
 
-      - name: Generate Swift source (GLM style - 3 scripts only)
+      - name: Generate Swift source (with REAL iOS 15 user agent - not fake iOS 26)
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -180,32 +143,27 @@ jobs:
                   let config = WKWebViewConfiguration()
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
+                  config.preferences.javaScriptEnabled = true
                   
-                  // Load exactly 3 scripts - exactly like GLM
+                  // Load 3 scripts
                   let bundle = Bundle.main
                   
-                  // 1. polyfills.js
                   if let path = bundle.path(forResource: "polyfills", ofType: "js"),
                      let js = try? String(contentsOfFile: path, encoding: .utf8) {
-                      let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                      config.userContentController.addUserScript(script)
-                      print("✅ Loaded polyfills.js")
+                      config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+                      print("Loaded polyfills.js")
                   }
                   
-                  // 2. legacy-transpiler.js (YOUR 274KB FILE)
                   if let path = bundle.path(forResource: "legacy-transpiler", ofType: "js"),
                      let js = try? String(contentsOfFile: path, encoding: .utf8) {
-                      let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                      config.userContentController.addUserScript(script)
-                      print("✅ Loaded legacy-transpiler.js")
+                      config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+                      print("Loaded legacy-transpiler.js")
                   }
                   
-                  // 3. loader.js
                   if let path = bundle.path(forResource: "loader", ofType: "js"),
                      let js = try? String(contentsOfFile: path, encoding: .utf8) {
-                      let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-                      config.userContentController.addUserScript(script)
-                      print("✅ Loaded loader.js")
+                      config.userContentController.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+                      print("Loaded loader.js")
                   }
                   
                   webView = WKWebView(frame: .zero, configuration: config)
@@ -213,7 +171,10 @@ jobs:
                   webView.navigationDelegate = self
                   webView.uiDelegate = self
                   webView.allowsBackForwardNavigationGestures = true
-                  webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+                  
+                  // CRITICAL FIX: Use REAL iOS 15 user agent - z.ai detects fake iOS 26
+                  webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 15_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1"
+                  
                   view.addSubview(webView)
                   webView.addObserver(self, forKeyPath: #keyPath(WKWebView.estimatedProgress), options: .new, context: nil)
               }
@@ -366,7 +327,8 @@ jobs:
               @objc func dismissKeyboard() { urlTextField.resignFirstResponder() }
               
               func loadURL(_ url: URL) {
-                  webView.load(URLRequest(url: url))
+                  let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+                  webView.load(request)
                   urlTextField.text = url.absoluteString
               }
               
@@ -379,10 +341,7 @@ jobs:
               
               @objc func goBack() { webView.goBack() }
               @objc func goForward() { webView.goForward() }
-              @objc func reload() {
-                  if webView.isLoading { webView.stopLoading() }
-                  else { webView.reload() }
-              }
+              @objc func reload() { webView.reload() }
               
               func textFieldShouldReturn(_ textField: UITextField) -> Bool {
                   textField.resignFirstResponder()
@@ -413,20 +372,20 @@ jobs:
               
               func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
                   print("Navigation failed: \(error.localizedDescription)")
-                  // Show alert on device
-                  let alert = UIAlertController(title: "Error", message: "Failed to load: \(error.localizedDescription)", preferredStyle: .alert)
-                  alert.addAction(UIAlertAction(title: "OK", style: .default))
-                  self.present(alert, animated: true)
+                  showError(error.localizedDescription)
               }
               
               func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-                  print("Provisional navigation failed: \(error.localizedDescription)")
-                  let alert = UIAlertController(title: "Error", message: "Failed to load website: \(error.localizedDescription)", preferredStyle: .alert)
-                  alert.addAction(UIAlertAction(title: "OK", style: .default))
-                  self.present(alert, animated: true)
+                  print("Provisional failed: \(error.localizedDescription)")
+                  showError(error.localizedDescription)
               }
               
-              // WKUIDelegate for alerts
+              func showError(_ message: String) {
+                  let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+                  alert.addAction(UIAlertAction(title: "OK", style: .default))
+                  present(alert, animated: true)
+              }
+              
               func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
                   let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
                   alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
@@ -496,5 +455,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-GLM-Style-3-Files
+          name: Modernize-Real-UA-Fix
           path: Modernize.ipa

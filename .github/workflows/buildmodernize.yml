@@ -114,7 +114,7 @@ jobs:
           APP_NAME="Modernize"
           cp combined.js Payload/${APP_NAME}.app/
 
-      - name: Generate Swift source (full‑screen button + 3‑finger exit)
+      - name: Generate Swift source (full‑screen button + 3‑finger exit) - FIXED
         run: |
           cat > app.swift << 'SWIFT'
           import UIKit
@@ -261,7 +261,8 @@ jobs:
                   let config = WKWebViewConfiguration()
                   config.allowsInlineMediaPlayback = true
                   config.mediaTypesRequiringUserActionForPlayback = []
-                  config.preferences.isElementFullscreenEnabled = true
+                  // isElementFullscreenEnabled is only available from iOS 15.4 – we don't need it because we control full‑screen manually.
+                  // Removed to keep iOS 15.0 compatibility.
 
                   if let jsPath = Bundle.main.path(forResource: "combined", ofType: "js"),
                      let js = try? String(contentsOfFile: jsPath) {
@@ -396,8 +397,10 @@ jobs:
 
               func toggleFullScreen() {
                   isFullScreen.toggle()
-                  let targetBottomConstant = isFullScreen ? -bottomToolbar.bounds.height : 0
-                  let targetWebViewConstant = isFullScreen ? 0 : 0
+                  let targetBottomConstant: CGFloat = isFullScreen ? -bottomToolbar.bounds.height : 0.0
+                  // webViewBottomConstraint should remain 0 (safe area) – we don't need to change it.
+                  // But we keep it for consistency.
+                  let targetWebViewConstant: CGFloat = 0.0
                   UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) {
                       self.bottomConstraint.constant = targetBottomConstant
                       self.webViewBottomConstraint.constant = targetWebViewConstant
@@ -434,7 +437,7 @@ jobs:
                   let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
                   if !isFullScreen {
                       UIView.animate(withDuration: dur, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
-                          self.bottomConstraint.constant = 0
+                          self.bottomConstraint.constant = 0.0
                           self.view.layoutIfNeeded()
                       }
                   }
@@ -729,5 +732,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Modernize-Ultimate
+          name: Modernize-Ultimate-Fixed
           path: Modernize.ipa
